@@ -1,0 +1,32 @@
+# Byte-compiled / optimized / virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+
+# Secrets & Local Environment Config (NEVER COMMIT)
+.env
+.env.local
+*.pem
+*.key
+
+# Testing & Linting cache
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+
+# Next.js Frontend (for when we build ui/)
+ui/.next/
+ui/node_modules/
+ui/out/
+
+# Database data mounts (if mounted locally)
+pgdata/
