@@ -6,8 +6,8 @@ type Theme = "dark" | "light";
 
 interface ThemeContextType {
   theme: Theme;
-  toggleTheme: () => void;
-  setTheme: (t: Theme) => void;
+  toggleTheme: (event?: React.MouseEvent) => void;
+  setTheme: (t: Theme, event?: React.MouseEvent) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -42,19 +42,54 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const setTheme = (newTheme: Theme) => {
-    setThemeState(newTheme);
-    localStorage.setItem("incidentiq_theme", newTheme);
-    applyTheme(newTheme);
+  const setThemeWithRipple = (newTheme: Theme, event?: React.MouseEvent) => {
+    // Check if View Transitions API is supported
+    const doc = document as any;
+    if (!doc.startViewTransition || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setThemeState(newTheme);
+      localStorage.setItem("incidentiq_theme", newTheme);
+      applyTheme(newTheme);
+      return;
+    }
+
+    // Get origin coordinates of click
+    const x = event?.clientX ?? window.innerWidth / 2;
+    const y = event?.clientY ?? window.innerHeight / 2;
+    const endRadius = Math.hypot(
+      Math.max(x, window.innerWidth - x),
+      Math.max(y, window.innerHeight - y)
+    );
+
+    const transition = doc.startViewTransition(() => {
+      setThemeState(newTheme);
+      localStorage.setItem("incidentiq_theme", newTheme);
+      applyTheme(newTheme);
+    });
+
+    transition.ready.then(() => {
+      document.documentElement.animate(
+        {
+          clipPath: [
+            `circle(0px at ${x}px ${y}px)`,
+            `circle(${endRadius}px at ${x}px ${y}px)`,
+          ],
+        },
+        {
+          duration: 450,
+          easing: "cubic-bezier(0.4, 0, 0.2, 1)",
+          pseudoElement: "::view-transition-new(root)",
+        }
+      );
+    });
   };
 
-  const toggleTheme = () => {
+  const toggleTheme = (event?: React.MouseEvent) => {
     const nextTheme = theme === "dark" ? "light" : "dark";
-    setTheme(nextTheme);
+    setThemeWithRipple(nextTheme, event);
   };
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme, setTheme }}>
+    <ThemeContext.Provider value={{ theme, toggleTheme, setTheme: setThemeWithRipple }}>
       {children}
     </ThemeContext.Provider>
   );
