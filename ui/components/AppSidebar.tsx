@@ -8,7 +8,6 @@ import {
   ShieldCheck,
   Server,
   PanelLeftClose,
-  PanelLeft,
   Sun,
   Moon,
   Zap,
@@ -59,13 +58,13 @@ export function AppSidebar({
       <div className="h-14 px-3 flex items-center justify-between border-b border-zinc-200/70 dark:border-zinc-800/60">
         {!isCollapsed && (
           <div className="flex items-center gap-2.5 overflow-hidden pl-1">
-            <div className="w-6 h-6 rounded-md bg-zinc-900 dark:bg-emerald-500/10 dark:border dark:border-emerald-500/30 flex items-center justify-center text-white dark:text-emerald-400 font-bold text-xs tracking-tighter shrink-0 shadow-xs">
+            <div className="w-6 h-6 rounded-md bg-lime-400 flex items-center justify-center text-zinc-950 font-bold text-xs tracking-tighter shrink-0 shadow-[0_0_10px_rgba(163,230,53,0.4)]">
               <Zap className="w-3.5 h-3.5 fill-current" />
             </div>
             <div className="flex flex-col overflow-hidden">
               <span className="font-semibold text-xs tracking-tight text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
                 IncidentIQ
-                <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium">
+                <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-lime-400/10 text-lime-600 dark:text-lime-400 font-medium border border-lime-400/20">
                   v2.0
                 </span>
               </span>
@@ -78,24 +77,22 @@ export function AppSidebar({
 
         {isCollapsed && (
           <div className="mx-auto">
-            <div className="w-7 h-7 rounded-md bg-zinc-900 dark:bg-emerald-500/10 dark:border dark:border-emerald-500/30 flex items-center justify-center text-white dark:text-emerald-400 font-bold text-xs">
+            <div className="w-8 h-8 rounded-lg bg-lime-400 flex items-center justify-center text-zinc-950 font-bold text-xs shadow-[0_0_12px_rgba(163,230,53,0.45)]">
               <Zap className="w-4 h-4 fill-current" />
             </div>
           </div>
         )}
 
-        {/* Collapse toggle */}
-        <button
-          onClick={onToggleCollapse}
-          className="p-1.5 rounded-md text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
-          title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >
-          {isCollapsed ? (
-            <PanelLeft className="w-4 h-4" />
-          ) : (
+        {/* Collapse toggle button: ONLY shown when expanded. When collapsed, the single button in TopBar expands it */}
+        {!isCollapsed && (
+          <button
+            onClick={onToggleCollapse}
+            className="p-1.5 rounded-md text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors cursor-pointer"
+            title="Collapse sidebar"
+          >
             <PanelLeftClose className="w-4 h-4" />
-          )}
-        </button>
+          </button>
+        )}
       </div>
 
       {/* Navigation List */}
@@ -108,7 +105,7 @@ export function AppSidebar({
             <button
               key={item.id}
               onClick={() => onSelectTab(item.id)}
-              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium transition-all group ${
+              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium transition-all group cursor-pointer ${
                 isActive
                   ? "bg-zinc-100 dark:bg-zinc-800/80 text-zinc-900 dark:text-zinc-100 shadow-xs dark:shadow-none font-semibold"
                   : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 hover:bg-zinc-100/60 dark:hover:bg-zinc-900/60"
@@ -117,14 +114,14 @@ export function AppSidebar({
             >
               <div className="relative shrink-0">
                 <Icon
-                  className={`w-4 h-4 ${
+                  className={`w-4 h-4 transition-colors ${
                     isActive
-                      ? "text-emerald-600 dark:text-emerald-400"
+                      ? "text-lime-600 dark:text-lime-400"
                       : "text-zinc-400 group-hover:text-zinc-600 dark:group-hover:text-zinc-300"
                   }`}
                 />
                 {item.id === "live" && isInvestigating && (
-                  <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                  <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-lime-400 animate-ping shadow-[0_0_6px_#a3e635]" />
                 )}
               </div>
 
@@ -135,7 +132,7 @@ export function AppSidebar({
                     <span
                       className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
                         isActive
-                          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold"
+                          ? "bg-lime-400/10 text-lime-600 dark:text-lime-400 font-semibold border border-lime-400/20"
                           : "bg-zinc-200/60 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400"
                       }`}
                     >
@@ -155,7 +152,7 @@ export function AppSidebar({
         {!isCollapsed && (
           <div className="px-2 py-1.5 rounded-lg bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200/60 dark:border-zinc-800/40 flex items-center justify-between text-[11px] font-mono text-zinc-500 dark:text-zinc-400">
             <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]" />
+              <span className="w-1.5 h-1.5 rounded-full bg-lime-400 shadow-[0_0_6px_#a3e635]" />
               <span>Control Plane</span>
             </div>
             <span className="text-[10px] text-zinc-400">:8000</span>
@@ -165,7 +162,7 @@ export function AppSidebar({
         {/* Theme Switcher Button */}
         <button
           onClick={toggleTheme}
-          className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors ${
+          className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors cursor-pointer ${
             isCollapsed ? "justify-center px-0" : ""
           }`}
           title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}

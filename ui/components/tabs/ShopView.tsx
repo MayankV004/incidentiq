@@ -34,7 +34,7 @@ export function ShopView({ onSwitchToLive }: ShopViewProps) {
   };
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
+    <div className="w-full space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
@@ -58,7 +58,7 @@ export function ShopView({ onSwitchToLive }: ShopViewProps) {
               <span
                 className={`w-2 h-2 rounded-full ${
                   svc.status === "healthy"
-                    ? "bg-emerald-500 shadow-[0_0_6px_#10b981]"
+                    ? "bg-lime-400 shadow-[0_0_8px_#a3e635]"
                     : svc.status === "degraded"
                     ? "bg-amber-500 animate-ping"
                     : "bg-sky-500 animate-pulse"
@@ -76,7 +76,7 @@ export function ShopView({ onSwitchToLive }: ShopViewProps) {
                 <span
                   className={
                     svc.status === "healthy"
-                      ? "text-emerald-600 dark:text-emerald-400 font-medium"
+                      ? "text-lime-600 dark:text-lime-400 font-medium"
                       : "text-amber-600 dark:text-amber-400 font-semibold uppercase"
                   }
                 >
@@ -93,7 +93,7 @@ export function ShopView({ onSwitchToLive }: ShopViewProps) {
       </div>
 
       {/* Chaos Injection Controls */}
-      <div className="rounded-xl border bg-white dark:bg-[#121215] border-zinc-200/80 dark:border-zinc-800/80 p-6 space-y-4 shadow-xs">
+      <div className="w-full rounded-xl border bg-white dark:bg-[#121215] border-zinc-200/80 dark:border-zinc-800/80 p-6 space-y-4 shadow-xs">
         <h3 className="text-xs font-semibold text-zinc-900 dark:text-zinc-200 uppercase tracking-wider font-mono">
           Chaos Fault Injectors
         </h3>
@@ -102,11 +102,11 @@ export function ShopView({ onSwitchToLive }: ShopViewProps) {
           <button
             onClick={() => handleInject("db_pool", "Orders DB Pool Exhaustion")}
             disabled={isInjecting}
-            className="p-4 rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 hover:border-emerald-500 text-left transition-all group cursor-pointer"
+            className="p-4 rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 hover:border-lime-500 text-left transition-all group cursor-pointer"
           >
-            <div className="flex items-center justify-between text-xs font-semibold text-zinc-900 dark:text-zinc-200 group-hover:text-emerald-600 dark:group-hover:text-emerald-400">
+            <div className="flex items-center justify-between text-xs font-semibold text-zinc-900 dark:text-zinc-200 group-hover:text-lime-600 dark:group-hover:text-lime-400">
               <span>Orders: DB Pool Exhaust</span>
-              <Zap className="w-3.5 h-3.5 text-zinc-400 group-hover:text-emerald-500" />
+              <Zap className="w-3.5 h-3.5 text-zinc-400 group-hover:text-lime-500" />
             </div>
             <p className="text-[11px] text-zinc-500 mt-1">
               Pins max pool connections to trigger connection acquisition timeouts
@@ -116,11 +116,11 @@ export function ShopView({ onSwitchToLive }: ShopViewProps) {
           <button
             onClick={() => handleInject("slow_query", "Orders Slow DB Query")}
             disabled={isInjecting}
-            className="p-4 rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 hover:border-emerald-500 text-left transition-all group cursor-pointer"
+            className="p-4 rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 hover:border-lime-500 text-left transition-all group cursor-pointer"
           >
-            <div className="flex items-center justify-between text-xs font-semibold text-zinc-900 dark:text-zinc-200 group-hover:text-emerald-600 dark:group-hover:text-emerald-400">
+            <div className="flex items-center justify-between text-xs font-semibold text-zinc-900 dark:text-zinc-200 group-hover:text-lime-600 dark:group-hover:text-lime-400">
               <span>Orders: Slow Query (4.2s)</span>
-              <Zap className="w-3.5 h-3.5 text-zinc-400 group-hover:text-emerald-500" />
+              <Zap className="w-3.5 h-3.5 text-zinc-400 group-hover:text-lime-500" />
             </div>
             <p className="text-[11px] text-zinc-500 mt-1">
               Forces table scan on unindexed checkout table, driving p95 above SLA
@@ -130,11 +130,11 @@ export function ShopView({ onSwitchToLive }: ShopViewProps) {
           <button
             onClick={() => handleInject("delay", "Fake External 6s Latency")}
             disabled={isInjecting}
-            className="p-4 rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 hover:border-emerald-500 text-left transition-all group cursor-pointer"
+            className="p-4 rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 hover:border-lime-500 text-left transition-all group cursor-pointer"
           >
-            <div className="flex items-center justify-between text-xs font-semibold text-zinc-900 dark:text-zinc-200 group-hover:text-emerald-600 dark:group-hover:text-emerald-400">
+            <div className="flex items-center justify-between text-xs font-semibold text-zinc-900 dark:text-zinc-200 group-hover:text-lime-600 dark:group-hover:text-lime-400">
               <span>Payments: Gateway Timeout</span>
-              <Zap className="w-3.5 h-3.5 text-zinc-400 group-hover:text-emerald-500" />
+              <Zap className="w-3.5 h-3.5 text-zinc-400 group-hover:text-lime-500" />
             </div>
             <p className="text-[11px] text-zinc-500 mt-1">
               Injects 6.0s delay in external payment gateway, causing client timeouts
@@ -143,12 +143,12 @@ export function ShopView({ onSwitchToLive }: ShopViewProps) {
         </div>
 
         {message && (
-          <div className="p-3 rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 flex items-center justify-between text-xs font-mono text-zinc-700 dark:text-zinc-300">
+          <div className="p-3.5 rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 flex items-center justify-between text-xs font-mono text-zinc-700 dark:text-zinc-300">
             <span>{message}</span>
             {activeFault && onSwitchToLive && (
               <button
                 onClick={onSwitchToLive}
-                className="px-3 py-1 rounded bg-emerald-500 text-zinc-950 font-sans font-semibold text-xs hover:bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.3)] cursor-pointer"
+                className="px-4 py-1.5 rounded-lg bg-lime-400 text-zinc-950 font-sans font-semibold text-xs hover:bg-lime-300 shadow-[0_0_10px_rgba(163,230,53,0.35)] cursor-pointer"
               >
                 Go to Live Triage →
               </button>

@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { ChevronRight, PanelLeft, Sun, Moon, Activity } from "lucide-react";
+import { ChevronRight, PanelLeft, Sun, Moon } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import { NavTab } from "./AppSidebar";
 
@@ -31,13 +31,13 @@ export function TopBar({
   };
 
   return (
-    <header className="sticky top-0 z-30 h-14 bg-white/80 dark:bg-[#09090b]/80 backdrop-blur-md border-b border-zinc-200/80 dark:border-zinc-800/80 px-6 flex items-center justify-between transition-colors">
-      {/* Left: Breadcrumbs & Sidebar Toggle */}
+    <header className="sticky top-0 z-30 h-14 bg-white/90 dark:bg-[#09090b]/90 backdrop-blur-md border-b border-zinc-200/80 dark:border-zinc-800/80 px-6 flex items-center justify-between transition-colors">
+      {/* Left: Breadcrumbs & Single Expand Button when collapsed */}
       <div className="flex items-center gap-3">
         {isSidebarCollapsed && (
           <button
             onClick={onToggleSidebar}
-            className="p-1.5 -ml-2 rounded-md text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+            className="p-1.5 -ml-2 rounded-md text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors cursor-pointer"
             title="Expand sidebar"
           >
             <PanelLeft className="w-4 h-4" />
@@ -64,13 +64,13 @@ export function TopBar({
       {/* Right: Status Pill & Actions */}
       <div className="flex items-center gap-3">
         {isInvestigating ? (
-          <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs font-mono text-emerald-600 dark:text-emerald-400">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+          <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-lime-400/10 border border-lime-400/30 text-xs font-mono text-lime-600 dark:text-lime-400">
+            <span className="w-2 h-2 rounded-full bg-lime-400 animate-ping shadow-[0_0_6px_#a3e635]" />
             <span>Autonomous Triage Active</span>
           </div>
         ) : (
           <div className="flex items-center gap-2 text-xs font-mono text-zinc-400 dark:text-zinc-500">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]" />
+            <span className="w-1.5 h-1.5 rounded-full bg-lime-400 shadow-[0_0_8px_#a3e635]" />
             <span>Ready</span>
           </div>
         )}
@@ -78,8 +78,8 @@ export function TopBar({
         {/* Quick theme toggle */}
         <button
           onClick={toggleTheme}
-          className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-          title="Toggle theme"
+          className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+          title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
         >
           {theme === "dark" ? (
             <Sun className="w-4 h-4 text-amber-400" />

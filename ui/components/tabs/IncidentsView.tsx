@@ -35,7 +35,7 @@ export function IncidentsView({ onSelectIncident }: IncidentsViewProps) {
       case "completed":
       case "remediation_executed":
         return (
-          <span className="px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+          <span className="px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-lime-400/10 text-lime-600 dark:text-lime-400 border border-lime-400/20">
             Resolved
           </span>
         );
@@ -53,7 +53,7 @@ export function IncidentsView({ onSelectIncident }: IncidentsViewProps) {
         );
       case "running":
         return (
-          <span className="px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 animate-pulse">
+          <span className="px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-lime-400/10 text-lime-600 dark:text-lime-400 border border-lime-400/20 animate-pulse">
             Investigating
           </span>
         );
@@ -67,7 +67,7 @@ export function IncidentsView({ onSelectIncident }: IncidentsViewProps) {
   };
 
   return (
-    <div className="space-y-4 max-w-5xl mx-auto">
+    <div className="w-full space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
@@ -87,14 +87,14 @@ export function IncidentsView({ onSelectIncident }: IncidentsViewProps) {
         </button>
       </div>
 
-      <div className="rounded-xl border bg-white dark:bg-[#121215] border-zinc-200/80 dark:border-zinc-800/80 overflow-hidden shadow-xs">
+      <div className="w-full rounded-xl border bg-white dark:bg-[#121215] border-zinc-200/80 dark:border-zinc-800/80 overflow-hidden shadow-xs">
         {incidents.length === 0 ? (
           <div className="p-12 text-center text-xs font-mono text-zinc-400">
             No incidents recorded yet. Launch an investigation in Live Triage to generate runs.
           </div>
         ) : (
           <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60 font-mono text-xs">
-            <div className="bg-zinc-50/60 dark:bg-zinc-950/60 px-5 py-2.5 text-zinc-400 dark:text-zinc-500 text-[11px] grid grid-cols-12 gap-3 uppercase tracking-wider">
+            <div className="bg-zinc-50/60 dark:bg-zinc-950/60 px-6 py-2.5 text-zinc-400 dark:text-zinc-500 text-[11px] grid grid-cols-12 gap-3 uppercase tracking-wider">
               <span className="col-span-3">Incident ID / Service</span>
               <span className="col-span-4">Symptom / Diagnosis</span>
               <span className="col-span-2">Status</span>
@@ -105,7 +105,7 @@ export function IncidentsView({ onSelectIncident }: IncidentsViewProps) {
             {incidents.map((inc) => (
               <div
                 key={inc.incident_id}
-                className="px-5 py-3.5 grid grid-cols-12 gap-3 items-center hover:bg-zinc-50 dark:hover:bg-zinc-900/40 transition-colors"
+                className="px-6 py-3.5 grid grid-cols-12 gap-3 items-center hover:bg-zinc-50 dark:hover:bg-zinc-900/40 transition-colors"
               >
                 <div className="col-span-3">
                   <span className="text-zinc-900 dark:text-zinc-200 font-semibold block">

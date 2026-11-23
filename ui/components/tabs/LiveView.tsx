@@ -95,7 +95,7 @@ export function LiveView({ scenarios, initialScenario }: LiveViewProps) {
   };
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
+    <div className="w-full space-y-6">
       {/* 1. Scenario Selector */}
       <ScenarioPicker
         scenarios={scenarios}
@@ -125,7 +125,7 @@ export function LiveView({ scenarios, initialScenario }: LiveViewProps) {
 
       {/* 3. Wireframe Empty State for Idle */}
       {status === "idle" && (
-        <div className="rounded-xl border bg-white dark:bg-[#121215] border-zinc-200/80 dark:border-zinc-800/80 p-14 text-center space-y-2 font-mono shadow-xs">
+        <div className="w-full rounded-xl border bg-white dark:bg-[#121215] border-zinc-200/80 dark:border-zinc-800/80 p-16 text-center space-y-2 font-mono shadow-xs">
           <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
             No active incident
           </div>

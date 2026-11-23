@@ -1,14 +1,6 @@
 "use client";
 
 import React, { useState } from "react";
-import {
-  ChevronRight,
-  ChevronDown,
-  Clock,
-  DollarSign,
-  ShieldAlert,
-  Terminal,
-} from "lucide-react";
 import { Alert, Evidence, IncidentEvent, IncidentStatus } from "../types/api";
 import { formatCost, formatLatency } from "../lib/utils";
 
@@ -51,7 +43,6 @@ export function AgentTimeline({
   const [isExpanded, setIsExpanded] = useState<boolean>(isRunning);
   const [expandedStepNode, setExpandedStepNode] = useState<string | null>(null);
 
-  // Auto-expand during investigation
   React.useEffect(() => {
     if (isRunning) {
       setIsExpanded(true);
@@ -60,7 +51,6 @@ export function AgentTimeline({
 
   const completedNodes = new Set(events.map((e) => e.node));
 
-  // Determine step states: "done" | "active" | "pending"
   const getStepState = (node: string, index: number): "done" | "active" | "pending" => {
     if (completedNodes.has(node)) return "done";
     const firstIncompleteIdx = ORDERED_STEPS.findIndex((s) => !completedNodes.has(s.node));
@@ -70,7 +60,6 @@ export function AgentTimeline({
 
   const getEventsForNode = (node: string) => events.filter((e) => e.node === node);
 
-  // Extract flag count
   const allFlags = events.flatMap((e) => (e.data?.guardrail_flags as any[]) || []);
   const flagCount = allFlags.length;
 
@@ -79,9 +68,9 @@ export function AgentTimeline({
   };
 
   return (
-    <div className="rounded-xl border transition-all duration-200 bg-white dark:bg-[#121215] border-zinc-200/80 dark:border-zinc-800/80 shadow-xs">
-      {/* 1. Wireframe Header: orders · p95 4s, errors 12% · last 30m    ◐ Running $0.002 4.1s */}
-      <div className="px-5 py-3.5 border-b border-zinc-200/60 dark:border-zinc-800/60 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
+    <div className="w-full rounded-xl border transition-all duration-200 bg-white dark:bg-[#121215] border-zinc-200/80 dark:border-zinc-800/80 shadow-xs">
+      {/* 1. Header: orders · p95 4s, errors 12% · last 30m    ◐ Running $0.002 4.1s */}
+      <div className="px-6 py-3.5 border-b border-zinc-200/60 dark:border-zinc-800/60 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
         <div className="flex items-center gap-2 text-zinc-700 dark:text-zinc-300">
           <span className="font-semibold text-zinc-900 dark:text-zinc-100 font-sans">
             {alert?.service || "orders"}
@@ -96,8 +85,8 @@ export function AgentTimeline({
 
         <div className="flex items-center gap-4 text-xs font-mono">
           {isRunning ? (
-            <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-semibold">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping shadow-[0_0_8px_#10b981]" />
+            <div className="flex items-center gap-1.5 text-lime-600 dark:text-lime-400 font-semibold">
+              <span className="w-2 h-2 rounded-full bg-lime-400 animate-ping shadow-[0_0_8px_#a3e635]" />
               <span>◐ Running</span>
             </div>
           ) : status === "awaiting_approval" ? (
@@ -109,7 +98,7 @@ export function AgentTimeline({
               <span>○ Abstained</span>
             </div>
           ) : (
-            <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-medium">
+            <div className="flex items-center gap-1.5 text-lime-600 dark:text-lime-400 font-medium">
               <span>✓ Resolved</span>
             </div>
           )}
@@ -123,11 +112,11 @@ export function AgentTimeline({
         </div>
       </div>
 
-      {/* 2. Collapsed summary bar (when done or awaiting approval) */}
+      {/* 2. Collapsed summary bar */}
       {!isRunning && (
         <div
           onClick={() => setIsExpanded(!isExpanded)}
-          className="px-5 py-3 flex items-center justify-between cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900/40 text-xs font-mono text-zinc-600 dark:text-zinc-400 transition-colors"
+          className="px-6 py-3 flex items-center justify-between cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900/40 text-xs font-mono text-zinc-600 dark:text-zinc-400 transition-colors"
         >
           <div className="flex items-center gap-2">
             <span>{isExpanded ? "▾" : "▸"}</span>
@@ -141,15 +130,14 @@ export function AgentTimeline({
         </div>
       )}
 
-      {/* 3. Stepper Rows (Running view or Expanded view) */}
+      {/* 3. Stepper Rows */}
       {isExpanded && (
-        <div className="px-5 py-3 divide-y divide-zinc-100 dark:divide-zinc-800/40">
+        <div className="px-6 py-3.5 divide-y divide-zinc-100 dark:divide-zinc-800/40">
           {ORDERED_STEPS.map((step, idx) => {
             const state = getStepState(step.node, idx);
             const stepEvents = getEventsForNode(step.node);
             const latestEv = stepEvents[stepEvents.length - 1];
 
-            // Extract detail text to match wireframe
             let detailText = latestEv?.summary || step.defaultDetail;
             if (step.node === "input_guard") {
               detailText = `PII 0 · injections 0`;
@@ -163,12 +151,10 @@ export function AgentTimeline({
               detailText = `retrieving…`;
             }
 
-            // Extract evidence emitted by this step
             const stepEvidence: Evidence[] = stepEvents.flatMap(
               (e) => (e.data?.evidence as Evidence[]) || []
             );
 
-            // Step guardrail flags
             const stepFlags: any[] = stepEvents.flatMap(
               (e) => (e.data?.guardrail_flags as any[]) || []
             );
@@ -181,14 +167,13 @@ export function AgentTimeline({
                   onClick={() => toggleStepDetails(step.node)}
                   className="flex items-center justify-between gap-4 cursor-pointer group"
                 >
-                  {/* Left: State Icon + Step Name + Detail */}
                   <div className="flex items-center gap-3 font-mono text-xs overflow-hidden">
                     <span
                       className={`w-4 text-center shrink-0 ${
                         state === "done"
-                          ? "text-emerald-600 dark:text-emerald-400 font-bold"
+                          ? "text-lime-600 dark:text-lime-400 font-bold"
                           : state === "active"
-                          ? "text-emerald-500 dark:text-emerald-400 font-bold animate-pulse"
+                          ? "text-lime-500 dark:text-lime-400 font-bold animate-pulse"
                           : "text-zinc-400 dark:text-zinc-600"
                       }`}
                     >
@@ -196,11 +181,11 @@ export function AgentTimeline({
                     </span>
 
                     <span
-                      className={`w-36 shrink-0 font-medium ${
+                      className={`w-40 shrink-0 font-medium ${
                         state === "done"
                           ? "text-zinc-900 dark:text-zinc-100 font-semibold"
                           : state === "active"
-                          ? "text-emerald-600 dark:text-emerald-400 font-semibold"
+                          ? "text-lime-600 dark:text-lime-400 font-semibold"
                           : "text-zinc-400 dark:text-zinc-500"
                       }`}
                     >
@@ -212,7 +197,7 @@ export function AgentTimeline({
                         state === "done"
                           ? "text-zinc-600 dark:text-zinc-400"
                           : state === "active"
-                          ? "text-emerald-600/80 dark:text-emerald-400/80 italic"
+                          ? "text-lime-600/90 dark:text-lime-400/90 italic"
                           : "text-zinc-400 dark:text-zinc-600"
                       }`}
                     >
@@ -220,7 +205,6 @@ export function AgentTimeline({
                     </span>
                   </div>
 
-                  {/* Right: Inline Evidence Chips & Guardrail Badges */}
                   <div className="flex items-center gap-2 shrink-0 font-mono text-xs">
                     {stepFlags.map((flag, fIdx) => (
                       <span
@@ -238,7 +222,7 @@ export function AgentTimeline({
                           e.stopPropagation();
                           onSelectEvidence(ev);
                         }}
-                        className="px-2 py-0.5 rounded text-[11px] font-mono bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-700 transition-colors shadow-2xs cursor-pointer hover:border-emerald-500"
+                        className="px-2 py-0.5 rounded text-[11px] font-mono bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-700 transition-colors shadow-2xs cursor-pointer hover:border-lime-500"
                         title="Click to inspect raw evidence sheet"
                       >
                         {ev.id}
@@ -247,11 +231,10 @@ export function AgentTimeline({
                   </div>
                 </div>
 
-                {/* Expanded step details (tool args & output) */}
                 {isStepExpanded && latestEv && (
                   <div className="ml-7 p-3 rounded-lg bg-zinc-50 dark:bg-zinc-950/80 border border-zinc-200 dark:border-zinc-800 font-mono text-[11px] space-y-1.5 animate-fade-in">
                     <div className="flex items-center justify-between text-zinc-400">
-                      <span>Node Execution Trace: {latestEv.node}</span>
+                      <span>Node Trace: {latestEv.node}</span>
                       <span>Cost: {formatCost(latestEv.cost_usd)}</span>
                     </div>
                     {latestEv.data && (

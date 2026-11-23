@@ -75,10 +75,10 @@ export function ApprovalModal({
         </div>
 
         {/* Security / Dry-Run Guarantee */}
-        <div className="flex items-start gap-2.5 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-800 dark:text-emerald-300">
-          <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400 mt-0.5" />
+        <div className="flex items-start gap-2.5 p-3 rounded-lg bg-lime-500/10 border border-lime-500/20 text-xs text-lime-900 dark:text-lime-300">
+          <CheckCircle2 className="w-4 h-4 shrink-0 text-lime-600 dark:text-lime-400 mt-0.5" />
           <div>
-            <span className="font-semibold text-emerald-900 dark:text-emerald-200">
+            <span className="font-semibold text-lime-900 dark:text-lime-200">
               Safe Dry-Run Guarantee:
             </span>{" "}
             Remediation tool runs in strictly sandboxed dry-run mode. Verification receipts are generated without mutating production state.
@@ -97,7 +97,7 @@ export function ApprovalModal({
           <button
             onClick={handleConfirm}
             disabled={isSubmitting}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-500 hover:bg-emerald-400 text-zinc-950 shadow-[0_0_12px_rgba(16,185,129,0.3)] transition-all active:scale-98 disabled:opacity-50 cursor-pointer"
+            className="flex items-center gap-2 px-5 py-2 rounded-lg text-xs font-semibold bg-lime-400 hover:bg-lime-300 text-zinc-950 shadow-[0_0_15px_rgba(163,230,53,0.35)] transition-all active:scale-98 disabled:opacity-50 cursor-pointer"
           >
             {isSubmitting ? (
               <>

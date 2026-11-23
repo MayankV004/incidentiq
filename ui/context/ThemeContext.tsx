@@ -17,25 +17,35 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    const savedTheme = localStorage.getItem("incidentiq_theme") as Theme | null;
-    const initialTheme = savedTheme || "dark";
-    setThemeState(initialTheme);
-    if (initialTheme === "dark") {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
+    const saved = localStorage.getItem("incidentiq_theme") as Theme | null;
+    const initial = saved || "dark";
+    setThemeState(initial);
+    applyTheme(initial);
     setMounted(true);
   }, []);
+
+  const applyTheme = (t: Theme) => {
+    const root = document.documentElement;
+    const body = document.body;
+    if (t === "dark") {
+      root.classList.add("dark");
+      root.classList.remove("light");
+      root.style.colorScheme = "dark";
+      body.classList.add("dark");
+      body.classList.remove("light");
+    } else {
+      root.classList.remove("dark");
+      root.classList.add("light");
+      root.style.colorScheme = "light";
+      body.classList.remove("dark");
+      body.classList.add("light");
+    }
+  };
 
   const setTheme = (newTheme: Theme) => {
     setThemeState(newTheme);
     localStorage.setItem("incidentiq_theme", newTheme);
-    if (newTheme === "dark") {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
+    applyTheme(newTheme);
   };
 
   const toggleTheme = () => {
@@ -45,7 +55,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <ThemeContext.Provider value={{ theme, toggleTheme, setTheme }}>
-      {mounted ? children : <div className="dark">{children}</div>}
+      {children}
     </ThemeContext.Provider>
   );
 }
