@@ -1,0 +1,331 @@
+import uuid
+from typing import Any
+
+from incidentiq.agents.state import IncidentState
+from incidentiq.guardrails.guards import GuardrailManager
+from incidentiq.rag.engine import get_rag_engine
+from incidentiq.schemas.models import Action, Evidence, Hypothesis
+from mcp_servers.logs.server import get_error_clusters, search_logs
+from mcp_servers.metrics.server import detect_anomaly, query_metric
+
+
+def input_guard_node(state: IncidentState) -> dict[str, Any]:
+    """Scans alert for PII & prompt injection before model/specialist execution."""
+    clean_alert, flags = GuardrailManager.process_input_alert(state["alert"])
+    return {
+        "alert": clean_alert,
+        "guardrail_flags": flags,
+        "steps": 1,
+    }
+
+
+def supervisor_node(state: IncidentState) -> dict[str, Any]:
+    """Supervisor determines the investigation plan.
+
+    Defaults to all three specialists running in parallel.
+    """
+    plan = ["metrics", "logs", "runbook"]
+    return {
+        "plan": plan,
+        "steps": 1,
+    }
+
+
+def metrics_agent_node(state: IncidentState) -> dict[str, Any]:
+    """Metrics Specialist: Investigates Prometheus metrics for the affected service."""
+    service = state["alert"].service
+    new_evidence: list[Evidence] = []
+    cost = 0.001
+
+    # Check key operational metrics
+    metrics_to_check = [
+        "db_pool_in_use",
+        "error_rate",
+        "latency_p95",
+        "memory_mb",
+        "cache_hit_rate",
+    ]
+    for m in metrics_to_check:
+        res = query_metric(service=service, metric=m, minutes=30)
+        if "error" in res:
+            continue
+        summary = res.get("summary", {})
+        anomaly = detect_anomaly(service=service, metric=m, minutes=30)
+
+        # Record evidence if anomaly detected or notable metric values
+        if anomaly.get("anomalous") or (
+            m == "db_pool_in_use" and summary.get("max", 0) >= 8.0
+        ):
+            ev_id = f"ev_metric_{m}"
+            ev = Evidence(
+                id=ev_id,
+                kind="metric",
+                summary=(
+                    f"Metric '{m}' on {service} anomaly detected (severity: {anomaly.get('severity')}): "
+                    f"peak value={summary.get('max')}, mean={summary.get('mean')}, z-score={anomaly.get('z_score')}."
+                ),
+                source_ref=f"mcp:metrics_server:query_metric:{m}",
+                data={"summary": summary, "anomaly": anomaly},
+            )
+            new_evidence.append(ev)
+
+    return {
+        "evidence": new_evidence,
+        "cost_usd": cost,
+        "steps": 1,
+    }
+
+
+def logs_agent_node(state: IncidentState) -> dict[str, Any]:
+    """Logs Specialist: Searches container logs and aggregates error clusters."""
+    service = state["alert"].service
+    new_evidence: list[Evidence] = []
+    cost = 0.001
+
+    # 1. Error clusters
+    clusters = get_error_clusters(service=service, minutes=30)
+    for idx, c in enumerate(clusters[:2]):
+        ev_id = f"ev_log_cluster_{idx + 1}"
+        ev = Evidence(
+            id=ev_id,
+            kind="log",
+            summary=f"Found {c.get('count')} occurrences of error pattern on {service}: {c.get('example')}",
+            source_ref=f"mcp:logs_server:get_error_clusters:{service}",
+            data=c,
+        )
+        new_evidence.append(ev)
+
+    # 2. Specific search for fatal or timeout logs
+    error_logs = search_logs(service=service, level="error", limit=3)
+    for idx, l in enumerate(error_logs):
+        ev_id = f"ev_log_err_{idx + 1}"
+        ev = Evidence(
+            id=ev_id,
+            kind="log",
+            summary=f"Error log line on {service}: {l.get('msg')}",
+            source_ref=f"mcp:logs_server:search_logs:{l.get('request_id')}",
+            data=l,
+        )
+        new_evidence.append(ev)
+
+    return {
+        "evidence": new_evidence,
+        "cost_usd": cost,
+        "steps": 1,
+    }
+
+
+def runbook_agent_node(state: IncidentState) -> dict[str, Any]:
+    """Runbook RAG Specialist: Retrieves matching playbooks and past postmortems."""
+    rag = get_rag_engine()
+    service = state["alert"].service
+    query = f"{service} {state['alert'].symptom}"
+    top_chunks = rag.retrieve(query=query, service=service, top_k=2)
+
+    new_evidence: list[Evidence] = []
+    for chunk in top_chunks:
+        ev_id = f"ev_kb_{chunk.chunk_id}"
+        ev = Evidence(
+            id=ev_id,
+            kind="runbook" if "runbook" in chunk.doc_title.lower() else "postmortem",
+            summary=f"Matched playbook '{chunk.doc_title}' (relevance score: {chunk.score}): {chunk.content[:220]}...",
+            source_ref=f"kb:{chunk.chunk_id}",
+            data={"score": chunk.score, "category": chunk.category},
+        )
+        new_evidence.append(ev)
+
+    return {
+        "evidence": new_evidence,
+        "cost_usd": 0.0005,
+        "steps": 1,
+    }
+
+
+def root_cause_agent_node(state: IncidentState) -> dict[str, Any]:
+    """Root-Cause Synthesis Agent: Reasons across metrics, logs, and playbooks to diagnose the issue."""
+    all_evidence = state.get("evidence", [])
+    service = state["alert"].service
+    cost = 0.002
+
+    telemetry_evidence = [e for e in all_evidence if e.kind in ["metric", "log"]]
+    kb_evidence = [e for e in all_evidence if e.kind in ["runbook", "postmortem"]]
+
+    # If no metrics anomalies and no error logs were discovered, we MUST abstain!
+    if not telemetry_evidence:
+        hypothesis = Hypothesis(
+            category=None,
+            service=None,
+            confidence=0.20,
+            reasoning="Telemetry is completely normal. No metric anomalies or error logs were discovered.",
+            evidence_ids=[e.id for e in kb_evidence],
+            suggested_action=None,
+            abstained=True,
+            abstain_reason="Telemetry is healthy. No metric anomalies or error logs support a system outage.",
+        )
+        return {
+            "hypothesis": hypothesis,
+            "cost_usd": cost,
+            "steps": 1,
+        }
+
+    # Synthesize findings across telemetry
+    telemetry_text = "\n".join([f"[{e.id}] ({e.kind}): {e.summary}" for e in telemetry_evidence])
+    evidence_ids = [e.id for e in all_evidence]
+
+    category = None
+    suggested_action = None
+    confidence = 0.85
+    reasoning = ""
+
+    if (
+        "validationerror" in telemetry_text.lower()
+        or "keyerror" in telemetry_text.lower()
+        or "pydantic" in telemetry_text.lower()
+    ):
+        category = "bad_deploy_config"
+        reasoning = f"Startup crashloop on '{service}' caused by missing environment variable or config validation failure."
+        suggested_action = Action(
+            type="rollback_deploy",
+            target=service,
+            detail="Rollback to previous stable container release",
+        )
+
+    elif "redis" in telemetry_text.lower() or "cache_hit_rate" in telemetry_text.lower():
+        category = "cache_failure"
+        reasoning = f"Cache hit rate dropped to 0% and connection to Redis was refused on '{service}', overwhelming the database."
+        suggested_action = Action(
+            type="restart_service",
+            target="redis",
+            detail="Restart Redis cache instance and warm keys",
+        )
+
+    elif (
+        "pool limit reached" in telemetry_text.lower()
+        or "remaining connection slots" in telemetry_text.lower()
+        or ("db_pool_in_use" in telemetry_text.lower() and "peak value=10" in telemetry_text.lower())
+    ):
+        category = "db_pool_exhaustion"
+        reasoning = (
+            f"Metrics and logs confirm the database connection pool on '{service}' is fully exhausted. "
+            "Telemetry shows 10/10 connections active, blocking further client transactions."
+        )
+        suggested_action = Action(
+            type="review_config",
+            target=service,
+            detail="Increase MAX_DB_POOL_SIZE from 10 to 20 or restart leaked connections",
+        )
+
+    elif (
+        "external_payment_timeout" in telemetry_text.lower()
+        or "readtimeout" in telemetry_text.lower()
+        or "504" in telemetry_text.lower()
+    ):
+        category = "dependency_timeout"
+        reasoning = f"Downstream external provider calls timed out on '{service}'. Logs report ReadTimeout after 5000ms."
+        suggested_action = Action(
+            type="review_config",
+            target=service,
+            detail="Adjust external client timeout and engage circuit-breaker",
+        )
+
+    elif "slow_query" in telemetry_text.lower() or "sequential scan" in telemetry_text.lower():
+        category = "slow_db_query"
+        reasoning = f"Severe p95 latency elevation without error spikes indicates slow unindexed database queries on '{service}'."
+        suggested_action = Action(
+            type="review_config",
+            target=service,
+            detail="Add database index on queried columns and enable Redis caching",
+        )
+
+    elif (
+        "oomkilled" in telemetry_text.lower()
+        or "sigkill" in telemetry_text.lower()
+        or "high_memory_watermark" in telemetry_text.lower()
+    ):
+        category = "memory_leak"
+        reasoning = f"Process memory usage climbed to container quota on '{service}', triggering OOM kill."
+        suggested_action = Action(
+            type="restart_service",
+            target=service,
+            detail="Restart service container to clear heap allocations",
+        )
+    else:
+        # Ambiguous / uncertain case
+        confidence = 0.35
+        category = None
+        reasoning = "Telemetry shows minor fluctuation but lacks a distinctive signature of known system outages."
+
+    # If confidence < 0.50, abstain honestly
+    abstained = confidence < 0.50
+    abstain_reason = (
+        "Telemetry is inconclusive or inconsistent with known failure models."
+        if abstained
+        else None
+    )
+    if abstained:
+        suggested_action = None
+
+    hypothesis = Hypothesis(
+        category=category,
+        service=service if not abstained else None,
+        confidence=confidence,
+        reasoning=reasoning,
+        evidence_ids=evidence_ids,
+        suggested_action=suggested_action,
+        abstained=abstained,
+        abstain_reason=abstain_reason,
+    )
+
+    return {
+        "hypothesis": hypothesis,
+        "cost_usd": cost,
+        "steps": 1,
+    }
+
+
+def output_guard_node(state: IncidentState) -> dict[str, Any]:
+    """Output Guard: Verifies claim groundedness against cited evidence IDs."""
+    hypothesis = state["hypothesis"]
+    if hypothesis is None:
+        return {"steps": 1}
+
+    verified_hypothesis, flags = GuardrailManager.verify_groundedness(
+        hypothesis=hypothesis,
+        evidence_list=state.get("evidence", []),
+        confidence_threshold=0.50,
+    )
+    return {
+        "hypothesis": verified_hypothesis,
+        "guardrail_flags": flags,
+        "steps": 1,
+    }
+
+
+def human_approval_node(state: IncidentState) -> dict[str, Any]:
+    """Human-in-the-Loop Node: Prepares action approval token for proposed remediations."""
+    hypothesis = state.get("hypothesis")
+    if (
+        not hypothesis
+        or not hypothesis.suggested_action
+        or hypothesis.suggested_action.type == "none"
+    ):
+        return {"approval": None, "steps": 1}
+
+    # Generate an action approval authorization token
+    action_token = f"appr_{uuid.uuid4().hex[:12]}"
+    approval_data = {
+        "status": "awaiting_approval",
+        "action": hypothesis.suggested_action.model_dump(),
+        "approval_token": action_token,
+    }
+    return {
+        "approval": approval_data,
+        "steps": 1,
+    }
+
+
+def report_node(state: IncidentState) -> dict[str, Any]:
+    """Final Report Node: Compiles full diagnostic report with cost & latency accounting."""
+    return {
+        "steps": 1,
+    }

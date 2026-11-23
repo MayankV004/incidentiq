@@ -3,10 +3,24 @@ name = "incidentiq"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
+    "asyncpg>=0.32.0",
     "fastapi>=0.165.0",
     "httpx>=0.28.1",
+    "langchain-mcp-adapters>=0.3.1",
+    "langgraph>=1.2.24",
+    "litellm>=1.110.2",
+    "mcp>=2.3.0",
+    "prometheus-client>=0.26.0",
+    "psutil>=7.2.2",
     "pydantic>=2",
     "pytest>=9.2.0",
+    "redis>=8.2.0",
     "ruff>=0.17.6",
+    "scikit-learn>=1.9.1",
+    "sqlalchemy>=2.1.9",
+    "structlog>=26.1.0",
     "uvicorn[standard]>=0.54.0",
 ]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

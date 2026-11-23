@@ -1,0 +1,15 @@
+{
+  "scenario_id": "005_orders_cache_failure",
+  "root_cause_category": "cache_failure",
+  "root_cause_service": "orders",
+  "key_evidence": [
+    "cache_hit_rate dropped to 0",
+    "Redis connection refused",
+    "cache eviction"
+  ],
+  "acceptable_actions": [
+    "restart_service"
+  ],
+  "should_abstain": false,
+  "difficulty": "medium"
+}

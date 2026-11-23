@@ -1,0 +1,15 @@
+{
+  "scenario_id": "003_orders_slow_db_query",
+  "root_cause_category": "slow_db_query",
+  "root_cause_service": "orders",
+  "key_evidence": [
+    "slow_query_execution",
+    "latency_p95 over 4s",
+    "SELECT * FROM orders WHERE"
+  ],
+  "acceptable_actions": [
+    "review_config"
+  ],
+  "should_abstain": false,
+  "difficulty": "medium"
+}

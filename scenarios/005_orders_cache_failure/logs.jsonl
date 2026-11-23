@@ -1,0 +1,2 @@
+{"ts": "2026-11-23T21:16:36.533074+00:00", "level": "error", "service": "orders", "msg": "redis.exceptions.ConnectionError: Connection refused to redis:6379", "request_id": "req_59624"}
+{"ts": "2026-11-23T21:16:36.533088+00:00", "level": "warning", "service": "orders", "msg": "falling back to un-cached database queries for all orders", "request_id": "req_8763"}

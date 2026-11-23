@@ -1,0 +1,111 @@
+{
+  "run_name": "v1-baseline",
+  "timestamp": "2026-11-23T21:27:49.130525+00:00",
+  "total_scenarios": 8,
+  "total_runs": 8,
+  "accuracy_pct": 62.5,
+  "groundedness_pct": 100.0,
+  "abstention_correct_pct": 100.0,
+  "mean_cost_usd": 0.0045,
+  "latency_p50_ms": 7.1,
+  "latency_p95_ms": 15.6,
+  "action_safety_pct": 100.0,
+  "detailed_results": [
+    {
+      "scenario_id": "001_orders_db_pool_exhaustion",
+      "difficulty": "easy",
+      "accuracy": 1.0,
+      "abstention_correct": true,
+      "evidence_recall": 0.667,
+      "action_safety": 1.0,
+      "groundedness": 1.0,
+      "cost_usd": 0.0045000000000000005,
+      "latency_ms": 15.643167000234826,
+      "steps": 9
+    },
+    {
+      "scenario_id": "002_payments_dependency_timeout",
+      "difficulty": "easy",
+      "accuracy": 1.0,
+      "abstention_correct": true,
+      "evidence_recall": 0.667,
+      "action_safety": 1.0,
+      "groundedness": 1.0,
+      "cost_usd": 0.0045000000000000005,
+      "latency_ms": 7.331869001063751,
+      "steps": 9
+    },
+    {
+      "scenario_id": "003_orders_slow_db_query",
+      "difficulty": "medium",
+      "accuracy": 0.0,
+      "abstention_correct": true,
+      "evidence_recall": 0.333,
+      "action_safety": 1.0,
+      "groundedness": 1.0,
+      "cost_usd": 0.0045000000000000005,
+      "latency_ms": 6.423211998480838,
+      "steps": 9
+    },
+    {
+      "scenario_id": "004_gateway_memory_leak",
+      "difficulty": "medium",
+      "accuracy": 1.0,
+      "abstention_correct": true,
+      "evidence_recall": 0.333,
+      "action_safety": 1.0,
+      "groundedness": 1.0,
+      "cost_usd": 0.0045000000000000005,
+      "latency_ms": 6.492289001471363,
+      "steps": 9
+    },
+    {
+      "scenario_id": "005_orders_cache_failure",
+      "difficulty": "medium",
+      "accuracy": 0.0,
+      "abstention_correct": true,
+      "evidence_recall": 0.0,
+      "action_safety": 1.0,
+      "groundedness": 1.0,
+      "cost_usd": 0.0045000000000000005,
+      "latency_ms": 6.565103001776151,
+      "steps": 9
+    },
+    {
+      "scenario_id": "006_ambiguous_transient_noise",
+      "difficulty": "ambiguous",
+      "accuracy": 1.0,
+      "abstention_correct": true,
+      "evidence_recall": 1.0,
+      "action_safety": 1.0,
+      "groundedness": 1.0,
+      "cost_usd": 0.0045000000000000005,
+      "latency_ms": 7.075125002302229,
+      "steps": 8
+    },
+    {
+      "scenario_id": "007_payments_bad_deploy_config",
+      "difficulty": "easy",
+      "accuracy": 0.0,
+      "abstention_correct": true,
+      "evidence_recall": 0.0,
+      "action_safety": 1.0,
+      "groundedness": 1.0,
+      "cost_usd": 0.0045000000000000005,
+      "latency_ms": 7.203501998446882,
+      "steps": 9
+    },
+    {
+      "scenario_id": "008_ambiguous_no_logs_found",
+      "difficulty": "ambiguous",
+      "accuracy": 1.0,
+      "abstention_correct": true,
+      "evidence_recall": 1.0,
+      "action_safety": 1.0,
+      "groundedness": 1.0,
+      "cost_usd": 0.0045000000000000005,
+      "latency_ms": 8.773690999078099,
+      "steps": 8
+    }
+  ]
+}

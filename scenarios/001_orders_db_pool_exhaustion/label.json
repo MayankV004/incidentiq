@@ -1,0 +1,15 @@
+{
+  "scenario_id": "001_orders_db_pool_exhaustion",
+  "root_cause_category": "db_pool_exhaustion",
+  "root_cause_service": "orders",
+  "key_evidence": [
+    "connection pool exhausted",
+    "db_pool_in_use at max",
+    "too many connections"
+  ],
+  "acceptable_actions": [
+    "review_config"
+  ],
+  "should_abstain": false,
+  "difficulty": "easy"
+}

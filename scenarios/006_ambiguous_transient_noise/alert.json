@@ -1,0 +1,6 @@
+{
+  "service": "gateway",
+  "symptom": "Brief 1-second blip with 2 dropped packets, system currently healthy",
+  "window_start": "2026-11-23T20:46:36.524860+00:00",
+  "window_end": "2026-11-23T21:16:36.524860+00:00"
+}

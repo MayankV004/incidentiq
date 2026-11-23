@@ -1,0 +1,3 @@
+{"ts": "2026-11-23T21:16:36.529802+00:00", "level": "info", "service": "payments", "msg": "processing_payment_request", "request_id": "req_74779"}
+{"ts": "2026-11-23T21:16:36.529821+00:00", "level": "error", "service": "payments", "msg": "external_payment_timeout", "request_id": "req_64924"}
+{"ts": "2026-11-23T21:16:36.529830+00:00", "level": "error", "service": "payments", "msg": "Payment gateway connection timed out", "request_id": "req_20151"}

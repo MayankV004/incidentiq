@@ -1,0 +1,15 @@
+{
+  "scenario_id": "004_gateway_memory_leak",
+  "root_cause_category": "memory_leak",
+  "root_cause_service": "gateway",
+  "key_evidence": [
+    "memory_mb monotonic increase",
+    "OOMKilled",
+    "memory_mb reached container quota"
+  ],
+  "acceptable_actions": [
+    "restart_service"
+  ],
+  "should_abstain": false,
+  "difficulty": "medium"
+}

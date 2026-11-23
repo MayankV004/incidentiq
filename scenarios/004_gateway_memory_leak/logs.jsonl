@@ -1,0 +1,2 @@
+{"ts": "2026-11-23T21:16:36.532009+00:00", "level": "warning", "service": "gateway", "msg": "high_memory_watermark", "request_id": "req_36246"}
+{"ts": "2026-11-23T21:16:36.532022+00:00", "level": "error", "service": "gateway", "msg": "process received SIGKILL: Out of memory (OOMKilled)", "request_id": "req_84822"}

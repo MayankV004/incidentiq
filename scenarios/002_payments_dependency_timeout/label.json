@@ -1,0 +1,15 @@
+{
+  "scenario_id": "002_payments_dependency_timeout",
+  "root_cause_category": "dependency_timeout",
+  "root_cause_service": "payments",
+  "key_evidence": [
+    "external_payment_timeout",
+    "latency_p95 spike",
+    "Payment gateway connection timed out"
+  ],
+  "acceptable_actions": [
+    "review_config"
+  ],
+  "should_abstain": false,
+  "difficulty": "easy"
+}

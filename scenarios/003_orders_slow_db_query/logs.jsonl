@@ -1,0 +1,2 @@
+{"ts": "2026-11-23T21:16:36.530947+00:00", "level": "warning", "service": "orders", "msg": "slow_query_execution", "request_id": "req_52365"}
+{"ts": "2026-11-23T21:16:36.530962+00:00", "level": "info", "service": "orders", "msg": "sequential scan on large table orders without index", "request_id": "req_86331"}

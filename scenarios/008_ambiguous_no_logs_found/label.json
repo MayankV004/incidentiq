@@ -1,0 +1,11 @@
+{
+  "scenario_id": "008_ambiguous_no_logs_found",
+  "root_cause_category": null,
+  "root_cause_service": null,
+  "key_evidence": [],
+  "acceptable_actions": [
+    "none"
+  ],
+  "should_abstain": true,
+  "difficulty": "ambiguous"
+}

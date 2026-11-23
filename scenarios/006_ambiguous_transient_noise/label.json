@@ -1,0 +1,11 @@
+{
+  "scenario_id": "006_ambiguous_transient_noise",
+  "root_cause_category": null,
+  "root_cause_service": null,
+  "key_evidence": [],
+  "acceptable_actions": [
+    "none"
+  ],
+  "should_abstain": true,
+  "difficulty": "ambiguous"
+}

@@ -1,0 +1,15 @@
+{
+  "scenario_id": "007_payments_bad_deploy_config",
+  "root_cause_category": "bad_deploy_config",
+  "root_cause_service": "payments",
+  "key_evidence": [
+    "KeyError: FAKE_EXTERNAL_URL",
+    "invalid deploy configuration",
+    "crashloop"
+  ],
+  "acceptable_actions": [
+    "rollback_deploy"
+  ],
+  "should_abstain": false,
+  "difficulty": "easy"
+}

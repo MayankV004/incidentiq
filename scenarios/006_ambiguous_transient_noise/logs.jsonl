@@ -1,0 +1,2 @@
+{"ts": "2026-11-23T21:16:36.534275+00:00", "level": "info", "service": "gateway", "msg": "healthcheck passed", "request_id": "req_78448"}
+{"ts": "2026-11-23T21:16:36.534290+00:00", "level": "info", "service": "gateway", "msg": "transient tcp reset from remote client, auto-resolved", "request_id": "req_13593"}
