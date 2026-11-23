@@ -55,6 +55,9 @@ function IncidentIQApp() {
 
         {/* Full-Screen Animated Content Workspace */}
         <main className="flex-1 w-full px-6 py-6 md:px-10 md:py-8 overflow-x-hidden">
+          <h1 className="sr-only">
+            IncidentIQ — Autonomous AI On-Call Triage & Root Cause Control Plane
+          </h1>
           <AnimatePresence mode="wait">
             <motion.div
               key={currentTab}
