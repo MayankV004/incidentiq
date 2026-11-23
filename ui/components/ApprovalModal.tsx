@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { ShieldAlert, CheckCircle2, AlertTriangle, Loader2 } from "lucide-react";
+import { ShieldAlert, CheckCircle2, Loader2 } from "lucide-react";
 import { ApprovalInfo } from "../types/api";
 
 interface ApprovalModalProps {
@@ -34,40 +34,40 @@ export function ApprovalModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-fade-in">
-      <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl p-6 space-y-5">
+      <div className="w-full max-w-md bg-white dark:bg-[#121215] border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-2xl p-6 space-y-5">
         {/* Header */}
         <div className="flex items-start gap-3">
-          <div className="p-2 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
+          <div className="p-2 rounded-lg bg-amber-500/10 text-amber-500 border border-amber-500/20">
             <ShieldAlert className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-base font-semibold text-zinc-100">
+            <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
               Authorize Remediation Action
             </h3>
-            <p className="text-xs text-zinc-400 mt-0.5">
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
               Human-in-the-loop authorization gate required before executing
             </p>
           </div>
         </div>
 
         {/* Action Details */}
-        <div className="bg-zinc-950 p-4 rounded-lg border border-zinc-800/80 space-y-3">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-zinc-400">Action Type</span>
-            <span className="font-mono text-zinc-200 font-semibold uppercase">
+        <div className="bg-zinc-50 dark:bg-zinc-950 p-4 rounded-lg border border-zinc-200 dark:border-zinc-800/80 space-y-3 font-mono text-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-zinc-500">Action Type</span>
+            <span className="text-zinc-900 dark:text-zinc-100 font-semibold uppercase">
               {action?.type || "review_config"}
             </span>
           </div>
 
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-zinc-400">Target Service</span>
-            <span className="font-mono text-zinc-200">{action?.target || "orders"}</span>
+          <div className="flex items-center justify-between">
+            <span className="text-zinc-500">Target Service</span>
+            <span className="text-zinc-900 dark:text-zinc-100">{action?.target || "orders"}</span>
           </div>
 
           {action?.parameters && Object.keys(action.parameters).length > 0 && (
-            <div className="pt-2 border-t border-zinc-800 text-xs">
-              <span className="text-zinc-400 block mb-1">Parameters</span>
-              <pre className="text-[11px] font-mono text-zinc-300 bg-zinc-900 p-2 rounded border border-zinc-800">
+            <div className="pt-2 border-t border-zinc-200 dark:border-zinc-800">
+              <span className="text-zinc-500 block mb-1">Parameters</span>
+              <pre className="text-[11px] text-zinc-800 dark:text-zinc-300 bg-white dark:bg-zinc-900 p-2 rounded border border-zinc-200 dark:border-zinc-800">
                 {JSON.stringify(action.parameters, null, 2)}
               </pre>
             </div>
@@ -75,10 +75,10 @@ export function ApprovalModal({
         </div>
 
         {/* Security / Dry-Run Guarantee */}
-        <div className="flex items-start gap-2.5 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-300">
-          <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
+        <div className="flex items-start gap-2.5 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-800 dark:text-emerald-300">
+          <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400 mt-0.5" />
           <div>
-            <span className="font-semibold text-emerald-200">
+            <span className="font-semibold text-emerald-900 dark:text-emerald-200">
               Safe Dry-Run Guarantee:
             </span>{" "}
             Remediation tool runs in strictly sandboxed dry-run mode. Verification receipts are generated without mutating production state.
@@ -90,14 +90,14 @@ export function ApprovalModal({
           <button
             onClick={onCancel}
             disabled={isSubmitting}
-            className="px-4 py-2 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors disabled:opacity-50"
+            className="px-4 py-2 rounded-lg text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors disabled:opacity-50 cursor-pointer"
           >
             Cancel
           </button>
           <button
             onClick={handleConfirm}
             disabled={isSubmitting}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold bg-zinc-100 text-zinc-950 hover:bg-white active:scale-98 transition-all disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-500 hover:bg-emerald-400 text-zinc-950 shadow-[0_0_12px_rgba(16,185,129,0.3)] transition-all active:scale-98 disabled:opacity-50 cursor-pointer"
           >
             {isSubmitting ? (
               <>

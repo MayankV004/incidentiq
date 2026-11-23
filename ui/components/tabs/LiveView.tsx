@@ -76,11 +76,7 @@ export function LiveView({ scenarios, initialScenario }: LiveViewProps) {
   const handleConfirmApproval = async () => {
     if (!activeIncidentId || !approval?.approval_token) return;
     try {
-      const res = await submitApproval(
-        activeIncidentId,
-        "approve",
-        approval.approval_token
-      );
+      await submitApproval(activeIncidentId, "approve", approval.approval_token);
       setStatus("remediation_executed");
       setIsApprovalModalOpen(false);
     } catch (err) {
@@ -99,7 +95,7 @@ export function LiveView({ scenarios, initialScenario }: LiveViewProps) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-5xl mx-auto">
       {/* 1. Scenario Selector */}
       <ScenarioPicker
         scenarios={scenarios}
@@ -109,9 +105,15 @@ export function LiveView({ scenarios, initialScenario }: LiveViewProps) {
         isLoading={isLaunching}
       />
 
-      {/* 2. Timeline Stepper (Hero during running, collapsible when completed) */}
+      {/* 2. Timeline Stepper (Full-width hero while running, collapses to 1-line header when done) */}
       {(status !== "idle" || events.length > 0) && (
         <AgentTimeline
+          alert={activeIncident?.alert || (selectedScenario ? {
+            service: selectedScenario.service,
+            symptom: selectedScenario.symptom,
+            window_start: selectedScenario.window_start,
+            window_end: selectedScenario.window_end,
+          } : undefined)}
           events={events}
           status={status}
           costUsd={costUsd}
@@ -121,20 +123,19 @@ export function LiveView({ scenarios, initialScenario }: LiveViewProps) {
         />
       )}
 
-      {/* 3. State-Driven Main Panel */}
+      {/* 3. Wireframe Empty State for Idle */}
       {status === "idle" && (
-        <div className="bg-zinc-900/50 border border-zinc-800/60 rounded-xl p-12 text-center space-y-3">
-          <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center mx-auto text-zinc-400">
-            ○
+        <div className="rounded-xl border bg-white dark:bg-[#121215] border-zinc-200/80 dark:border-zinc-800/80 p-14 text-center space-y-2 font-mono shadow-xs">
+          <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+            No active incident
           </div>
-          <h3 className="text-sm font-semibold text-zinc-200">No Active Incident</h3>
-          <p className="text-xs text-zinc-500 max-w-sm mx-auto">
-            Choose a benchmark scenario above and click &quot;Launch Investigation&quot;, or trigger a chaos fault in the Shop Lab.
-          </p>
+          <div className="text-xs text-zinc-500 max-w-md mx-auto">
+            Pick a scenario, or inject a fault in Shop Control.
+          </div>
         </div>
       )}
 
-      {/* Awaiting Approval or Completed Report */}
+      {/* 4. Awaiting Approval or Completed Report */}
       {(status === "awaiting_approval" ||
         status === "completed" ||
         status === "remediation_executed" ||
@@ -150,12 +151,16 @@ export function LiveView({ scenarios, initialScenario }: LiveViewProps) {
         />
       )}
 
-      {/* Abstained View */}
+      {/* 5. Abstained State Panel */}
       {status === "abstained" && <AbstainedPanel hypothesis={hypothesis} />}
 
-      {/* Failed View */}
+      {/* 6. Failed State Panel */}
       {status === "failed" && (
-        <FailedPanel error={error || undefined} onRetry={handleLaunch} />
+        <FailedPanel
+          error={error || undefined}
+          partialEvidence={evidenceList}
+          onRetry={handleLaunch}
+        />
       )}
 
       {/* Slide-over Citation Drawer */}

@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { HeaderNav, NavTab } from "../components/HeaderNav";
+import { ThemeProvider } from "../context/ThemeContext";
+import { AppSidebar, NavTab } from "../components/AppSidebar";
+import { TopBar } from "../components/TopBar";
 import { LiveView } from "../components/tabs/LiveView";
 import { IncidentsView } from "../components/tabs/IncidentsView";
 import { EvaluationView } from "../components/tabs/EvaluationView";
@@ -10,50 +12,75 @@ import { ShopView } from "../components/tabs/ShopView";
 import { Scenario } from "../types/api";
 import { fetchScenarios } from "../lib/api";
 
-export default function Home() {
+function IncidentIQApp() {
   const [currentTab, setCurrentTab] = useState<NavTab>("live");
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
-  const [isLoadingScenarios, setIsLoadingScenarios] = useState(true);
 
   useEffect(() => {
     fetchScenarios()
       .then((data) => setScenarios(data))
-      .catch((err) => console.error("Error loading scenarios:", err))
-      .finally(() => setIsLoadingScenarios(false));
+      .catch((err) => console.error("Error loading scenarios:", err));
   }, []);
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col selection:bg-zinc-800 selection:text-zinc-100">
-      {/* Top Instrument Header */}
-      <HeaderNav currentTab={currentTab} onSelectTab={setCurrentTab} />
+    <div className="min-h-screen bg-[#fafafa] dark:bg-[#09090b] text-zinc-900 dark:text-zinc-100 flex transition-colors duration-200">
+      {/* Collapsible Left Sidebar */}
+      <AppSidebar
+        currentTab={currentTab}
+        onSelectTab={setCurrentTab}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+        incidentCount={8}
+      />
 
-      {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6">
-        {currentTab === "live" && (
-          <LiveView
-            scenarios={scenarios}
-            initialScenario={scenarios[0]}
-          />
-        )}
+      {/* Main Content Area */}
+      <div
+        className={`flex-1 flex flex-col min-h-screen transition-all duration-200 ${
+          isSidebarCollapsed ? "ml-16" : "ml-64"
+        }`}
+      >
+        {/* Top Notion/Linear Breadcrumb Bar */}
+        <TopBar
+          currentTab={currentTab}
+          isSidebarCollapsed={isSidebarCollapsed}
+          onToggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+        />
 
-        {currentTab === "incidents" && <IncidentsView />}
+        {/* Tab Content */}
+        <main className="flex-1 p-6 md:p-8">
+          {currentTab === "live" && (
+            <LiveView
+              scenarios={scenarios}
+              initialScenario={scenarios[0]}
+            />
+          )}
 
-        {currentTab === "evaluation" && <EvaluationView />}
+          {currentTab === "incidents" && <IncidentsView />}
 
-        {currentTab === "security" && <SecurityView />}
+          {currentTab === "evaluation" && <EvaluationView />}
 
-        {currentTab === "shop" && (
-          <ShopView onSwitchToLive={() => setCurrentTab("live")} />
-        )}
-      </main>
+          {currentTab === "security" && <SecurityView />}
 
-      {/* Footer */}
-      <footer className="border-t border-zinc-900 bg-zinc-950/80 py-4 text-center text-xs font-mono text-zinc-600">
-        <div className="max-w-7xl mx-auto px-4 flex items-center justify-between">
-          <span>IncidentIQ v2.0 · Autonomous On-Call Control Plane</span>
-          <span>LangGraph Multi-Agent Architecture · FastMCP Tools</span>
-        </div>
-      </footer>
+          {currentTab === "shop" && (
+            <ShopView onSwitchToLive={() => setCurrentTab("live")} />
+          )}
+        </main>
+
+        {/* Minimalist Notion Footer */}
+        <footer className="border-t border-zinc-200/70 dark:border-zinc-900/80 px-8 py-3.5 text-xs font-mono text-zinc-400 dark:text-zinc-600 flex items-center justify-between">
+          <span>IncidentIQ · Autonomous Multi-Agent On-Call Control Plane</span>
+          <span>FastMCP · LangGraph Engine</span>
+        </footer>
+      </div>
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <ThemeProvider>
+      <IncidentIQApp />
+    </ThemeProvider>
   );
 }
