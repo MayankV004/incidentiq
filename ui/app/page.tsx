@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { motion, AnimatePresence } from "motion/react";
 import { ThemeProvider, useTheme } from "../context/ThemeContext";
 import { AppSidebar, NavTab } from "../components/AppSidebar";
 import { TopBar } from "../components/TopBar";
@@ -52,24 +53,35 @@ function IncidentIQApp() {
           onToggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
         />
 
-        {/* Full-Screen Content Workspace */}
-        <main className="flex-1 w-full px-6 py-6 md:px-10 md:py-8">
-          {currentTab === "live" && (
-            <LiveView
-              scenarios={scenarios}
-              initialScenario={scenarios[0]}
-            />
-          )}
+        {/* Full-Screen Animated Content Workspace */}
+        <main className="flex-1 w-full px-6 py-6 md:px-10 md:py-8 overflow-x-hidden">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={currentTab}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+              className="w-full"
+            >
+              {currentTab === "live" && (
+                <LiveView
+                  scenarios={scenarios}
+                  initialScenario={scenarios[0]}
+                />
+              )}
 
-          {currentTab === "incidents" && <IncidentsView />}
+              {currentTab === "incidents" && <IncidentsView />}
 
-          {currentTab === "evaluation" && <EvaluationView />}
+              {currentTab === "evaluation" && <EvaluationView />}
 
-          {currentTab === "security" && <SecurityView />}
+              {currentTab === "security" && <SecurityView />}
 
-          {currentTab === "shop" && (
-            <ShopView onSwitchToLive={() => setCurrentTab("live")} />
-          )}
+              {currentTab === "shop" && (
+                <ShopView onSwitchToLive={() => setCurrentTab("live")} />
+              )}
+            </motion.div>
+          </AnimatePresence>
         </main>
       </div>
     </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { motion, AnimatePresence } from "motion/react";
 import { Alert, Evidence, IncidentEvent, IncidentStatus } from "../types/api";
 import { formatCost, formatLatency } from "../lib/utils";
 
@@ -68,7 +69,7 @@ export function AgentTimeline({
   };
 
   return (
-    <div className="w-full rounded-xl border transition-all duration-200 bg-white dark:bg-[#121215] border-zinc-200/80 dark:border-zinc-800/80 shadow-xs">
+    <div className="w-full rounded-xl border transition-all duration-200 bg-white dark:bg-[#121215] border-zinc-200/80 dark:border-zinc-800/80 shadow-xs overflow-hidden">
       {/* 1. Header: orders · p95 4s, errors 12% · last 30m    ◐ Running $0.002 4.1s */}
       <div className="px-6 py-3.5 border-b border-zinc-200/60 dark:border-zinc-800/60 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
         <div className="flex items-center gap-2 text-zinc-700 dark:text-zinc-300">
@@ -130,125 +131,149 @@ export function AgentTimeline({
         </div>
       )}
 
-      {/* 3. Stepper Rows */}
-      {isExpanded && (
-        <div className="px-6 py-3.5 divide-y divide-zinc-100 dark:divide-zinc-800/40">
-          {ORDERED_STEPS.map((step, idx) => {
-            const state = getStepState(step.node, idx);
-            const stepEvents = getEventsForNode(step.node);
-            const latestEv = stepEvents[stepEvents.length - 1];
+      {/* 3. Stepper Rows with motion collapse/expand (200ms height & opacity) */}
+      <AnimatePresence initial={false}>
+        {isExpanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: "easeInOut" }}
+            className="overflow-hidden border-t border-zinc-100 dark:border-zinc-800/40"
+          >
+            <div className="px-6 py-3.5 divide-y divide-zinc-100 dark:divide-zinc-800/40">
+              {ORDERED_STEPS.map((step, idx) => {
+                const state = getStepState(step.node, idx);
+                const stepEvents = getEventsForNode(step.node);
+                const latestEv = stepEvents[stepEvents.length - 1];
 
-            let detailText = latestEv?.summary || step.defaultDetail;
-            if (step.node === "input_guard") {
-              detailText = `PII 0 · injections 0`;
-            } else if (step.node === "supervisor" && latestEv?.data?.plan) {
-              detailText = `plan: ${(latestEv.data.plan as string[]).join(", ")}`;
-            } else if (step.node === "metrics_agent" && state === "done") {
-              detailText = `db_pool_in_use at max from 14:02`;
-            } else if (step.node === "logs_agent" && state === "done") {
-              detailText = `312 "too many connections"`;
-            } else if (step.node === "runbook_agent" && state === "active") {
-              detailText = `retrieving…`;
-            }
+                let detailText = latestEv?.summary || step.defaultDetail;
+                if (step.node === "input_guard") {
+                  detailText = `PII 0 · injections 0`;
+                } else if (step.node === "supervisor" && latestEv?.data?.plan) {
+                  detailText = `plan: ${(latestEv.data.plan as string[]).join(", ")}`;
+                } else if (step.node === "metrics_agent" && state === "done") {
+                  detailText = `db_pool_in_use at max from 14:02`;
+                } else if (step.node === "logs_agent" && state === "done") {
+                  detailText = `312 "too many connections"`;
+                } else if (step.node === "runbook_agent" && state === "active") {
+                  detailText = `retrieving…`;
+                }
 
-            const stepEvidence: Evidence[] = stepEvents.flatMap(
-              (e) => (e.data?.evidence as Evidence[]) || []
-            );
+                const stepEvidence: Evidence[] = stepEvents.flatMap(
+                  (e) => (e.data?.evidence as Evidence[]) || []
+                );
 
-            const stepFlags: any[] = stepEvents.flatMap(
-              (e) => (e.data?.guardrail_flags as any[]) || []
-            );
+                const stepFlags: any[] = stepEvents.flatMap(
+                  (e) => (e.data?.guardrail_flags as any[]) || []
+                );
 
-            const isStepExpanded = expandedStepNode === step.node;
+                const isStepExpanded = expandedStepNode === step.node;
 
-            return (
-              <div key={step.node} className="py-2.5 space-y-2">
-                <div
-                  onClick={() => toggleStepDetails(step.node)}
-                  className="flex items-center justify-between gap-4 cursor-pointer group"
-                >
-                  <div className="flex items-center gap-3 font-mono text-xs overflow-hidden">
-                    <span
-                      className={`w-4 text-center shrink-0 ${
-                        state === "done"
-                          ? "text-lime-600 dark:text-lime-400 font-bold"
-                          : state === "active"
-                          ? "text-lime-500 dark:text-lime-400 font-bold animate-pulse"
-                          : "text-zinc-400 dark:text-zinc-600"
-                      }`}
+                return (
+                  <div key={step.node} className="py-2.5 space-y-2">
+                    <div
+                      onClick={() => toggleStepDetails(step.node)}
+                      className="flex items-center justify-between gap-4 cursor-pointer group"
                     >
-                      {state === "done" ? "✓" : state === "active" ? "◐" : "○"}
-                    </span>
+                      <div className="flex items-center gap-3 font-mono text-xs overflow-hidden">
+                        <span
+                          className={`w-4 text-center shrink-0 ${
+                            state === "done"
+                              ? "text-lime-600 dark:text-lime-400 font-bold"
+                              : state === "active"
+                              ? "text-lime-500 dark:text-lime-400 font-bold animate-pulse"
+                              : "text-zinc-400 dark:text-zinc-600"
+                          }`}
+                        >
+                          {state === "done" ? "✓" : state === "active" ? "◐" : "○"}
+                        </span>
 
-                    <span
-                      className={`w-40 shrink-0 font-medium ${
-                        state === "done"
-                          ? "text-zinc-900 dark:text-zinc-100 font-semibold"
-                          : state === "active"
-                          ? "text-lime-600 dark:text-lime-400 font-semibold"
-                          : "text-zinc-400 dark:text-zinc-500"
-                      }`}
-                    >
-                      {step.name}
-                    </span>
+                        <span
+                          className={`w-40 shrink-0 font-medium ${
+                            state === "done"
+                              ? "text-zinc-900 dark:text-zinc-100 font-semibold"
+                              : state === "active"
+                              ? "text-lime-600 dark:text-lime-400 font-semibold"
+                              : "text-zinc-400 dark:text-zinc-500"
+                          }`}
+                        >
+                          {step.name}
+                        </span>
 
-                    <span
-                      className={`truncate ${
-                        state === "done"
-                          ? "text-zinc-600 dark:text-zinc-400"
-                          : state === "active"
-                          ? "text-lime-600/90 dark:text-lime-400/90 italic"
-                          : "text-zinc-400 dark:text-zinc-600"
-                      }`}
-                    >
-                      {detailText}
-                    </span>
-                  </div>
+                        <span
+                          className={`truncate ${
+                            state === "done"
+                              ? "text-zinc-600 dark:text-zinc-400"
+                              : state === "active"
+                              ? "text-lime-600/90 dark:text-lime-400/90 italic"
+                              : "text-zinc-400 dark:text-zinc-600"
+                          }`}
+                        >
+                          {detailText}
+                        </span>
+                      </div>
 
-                  <div className="flex items-center gap-2 shrink-0 font-mono text-xs">
-                    {stepFlags.map((flag, fIdx) => (
-                      <span
-                        key={fIdx}
-                        className="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
-                      >
-                        {flag.rule || "Injection quarantined"}
-                      </span>
-                    ))}
+                      <div className="flex items-center gap-2 shrink-0 font-mono text-xs">
+                        {stepFlags.map((flag, fIdx) => (
+                          <span
+                            key={fIdx}
+                            className="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+                          >
+                            {flag.rule || "Injection quarantined"}
+                          </span>
+                        ))}
 
-                    {stepEvidence.map((ev) => (
-                      <button
-                        key={ev.id}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onSelectEvidence(ev);
-                        }}
-                        className="px-2 py-0.5 rounded text-[11px] font-mono bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-700 transition-colors shadow-2xs cursor-pointer hover:border-lime-500"
-                        title="Click to inspect raw evidence sheet"
-                      >
-                        {ev.id}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {isStepExpanded && latestEv && (
-                  <div className="ml-7 p-3 rounded-lg bg-zinc-50 dark:bg-zinc-950/80 border border-zinc-200 dark:border-zinc-800 font-mono text-[11px] space-y-1.5 animate-fade-in">
-                    <div className="flex items-center justify-between text-zinc-400">
-                      <span>Node Trace: {latestEv.node}</span>
-                      <span>Cost: {formatCost(latestEv.cost_usd)}</span>
+                        {stepEvidence.map((ev) => (
+                          <motion.button
+                            key={ev.id}
+                            initial={{ scale: 0.85, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            transition={{ duration: 0.15 }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onSelectEvidence(ev);
+                            }}
+                            className="px-2 py-0.5 rounded text-[11px] font-mono bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-700 transition-colors shadow-2xs cursor-pointer hover:border-lime-500"
+                            title="Click to inspect raw evidence sheet"
+                          >
+                            {ev.id}
+                          </motion.button>
+                        ))}
+                      </div>
                     </div>
-                    {latestEv.data && (
-                      <pre className="text-zinc-700 dark:text-zinc-300 overflow-x-auto max-h-40 leading-snug p-2 rounded bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800/60">
-                        {JSON.stringify(latestEv.data, null, 2)}
-                      </pre>
-                    )}
+
+                    {/* Step tool trace details */}
+                    <AnimatePresence>
+                      {isStepExpanded && latestEv && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.15 }}
+                          className="ml-7 overflow-hidden"
+                        >
+                          <div className="p-3 rounded-lg bg-zinc-50 dark:bg-zinc-950/80 border border-zinc-200 dark:border-zinc-800 font-mono text-[11px] space-y-1.5 my-1">
+                            <div className="flex items-center justify-between text-zinc-400">
+                              <span>Node Trace: {latestEv.node}</span>
+                              <span>Cost: {formatCost(latestEv.cost_usd)}</span>
+                            </div>
+                            {latestEv.data && (
+                              <pre className="text-zinc-700 dark:text-zinc-300 overflow-x-auto max-h-40 leading-snug p-2 rounded bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800/60">
+                                {JSON.stringify(latestEv.data, null, 2)}
+                              </pre>
+                            )}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { RefreshCw } from "lucide-react";
 import { IncidentSummary } from "../../types/api";
 import { fetchIncidents } from "../../lib/api";
 import { formatCost, formatLatency } from "../../lib/utils";
+import { TableRowSkeleton } from "../Skeleton";
 
 interface IncidentsViewProps {
   onSelectIncident?: (id: string) => void;
@@ -88,21 +89,28 @@ export function IncidentsView({ onSelectIncident }: IncidentsViewProps) {
       </div>
 
       <div className="w-full rounded-xl border bg-white dark:bg-[#121215] border-zinc-200/80 dark:border-zinc-800/80 overflow-hidden shadow-xs">
-        {incidents.length === 0 ? (
-          <div className="p-12 text-center text-xs font-mono text-zinc-400">
-            No incidents recorded yet. Launch an investigation in Live Triage to generate runs.
+        <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60 font-mono text-xs">
+          <div className="bg-zinc-50/60 dark:bg-zinc-950/60 px-6 py-2.5 text-zinc-400 dark:text-zinc-500 text-[11px] grid grid-cols-12 gap-3 uppercase tracking-wider">
+            <span className="col-span-3">Incident ID / Service</span>
+            <span className="col-span-4">Symptom / Diagnosis</span>
+            <span className="col-span-2">Status</span>
+            <span className="col-span-1 text-right">Latency</span>
+            <span className="col-span-2 text-right">Cost</span>
           </div>
-        ) : (
-          <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60 font-mono text-xs">
-            <div className="bg-zinc-50/60 dark:bg-zinc-950/60 px-6 py-2.5 text-zinc-400 dark:text-zinc-500 text-[11px] grid grid-cols-12 gap-3 uppercase tracking-wider">
-              <span className="col-span-3">Incident ID / Service</span>
-              <span className="col-span-4">Symptom / Diagnosis</span>
-              <span className="col-span-2">Status</span>
-              <span className="col-span-1 text-right">Latency</span>
-              <span className="col-span-2 text-right">Cost</span>
-            </div>
 
-            {incidents.map((inc) => (
+          {isLoading ? (
+            <>
+              <TableRowSkeleton />
+              <TableRowSkeleton />
+              <TableRowSkeleton />
+              <TableRowSkeleton />
+            </>
+          ) : incidents.length === 0 ? (
+            <div className="p-12 text-center text-xs font-mono text-zinc-400">
+              No incidents recorded yet. Launch an investigation in Live Triage to generate runs.
+            </div>
+          ) : (
+            incidents.map((inc) => (
               <div
                 key={inc.incident_id}
                 className="px-6 py-3.5 grid grid-cols-12 gap-3 items-center hover:bg-zinc-50 dark:hover:bg-zinc-900/40 transition-colors"
@@ -137,9 +145,9 @@ export function IncidentsView({ onSelectIncident }: IncidentsViewProps) {
                   {formatCost(inc.cost_usd)}
                 </div>
               </div>
-            ))}
-          </div>
-        )}
+            ))
+          )}
+        </div>
       </div>
     </div>
   );
