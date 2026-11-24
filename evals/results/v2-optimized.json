@@ -1,14 +1,14 @@
 {
   "run_name": "v2-optimized",
-  "timestamp": "2026-11-23T21:28:46.195714+00:00",
+  "timestamp": "2026-11-24T12:16:52.865181+00:00",
   "total_scenarios": 8,
   "total_runs": 8,
   "accuracy_pct": 87.5,
   "groundedness_pct": 100.0,
   "abstention_correct_pct": 87.5,
   "mean_cost_usd": 0.0045,
-  "latency_p50_ms": 9.9,
-  "latency_p95_ms": 16.6,
+  "latency_p50_ms": 5.1,
+  "latency_p95_ms": 8.8,
   "action_safety_pct": 100.0,
   "detailed_results": [
     {
@@ -20,7 +20,7 @@
       "action_safety": 1.0,
       "groundedness": 1.0,
       "cost_usd": 0.0045000000000000005,
-      "latency_ms": 16.64895900103147,
+      "latency_ms": 8.848903999023605,
       "steps": 9
     },
     {
@@ -32,7 +32,7 @@
       "action_safety": 1.0,
       "groundedness": 1.0,
       "cost_usd": 0.0045000000000000005,
-      "latency_ms": 10.266715002217097,
+      "latency_ms": 5.180718999326928,
       "steps": 9
     },
     {
@@ -44,7 +44,7 @@
       "action_safety": 1.0,
       "groundedness": 1.0,
       "cost_usd": 0.0045000000000000005,
-      "latency_ms": 10.16375600011088,
+      "latency_ms": 4.826155000046128,
       "steps": 8
     },
     {
@@ -56,7 +56,7 @@
       "action_safety": 1.0,
       "groundedness": 1.0,
       "cost_usd": 0.0045000000000000005,
-      "latency_ms": 9.844559997873148,
+      "latency_ms": 5.085781001980649,
       "steps": 9
     },
     {
@@ -68,7 +68,7 @@
       "action_safety": 1.0,
       "groundedness": 1.0,
       "cost_usd": 0.0045000000000000005,
-      "latency_ms": 9.584641997207655,
+      "latency_ms": 5.031529002735624,
       "steps": 9
     },
     {
@@ -80,7 +80,7 @@
       "action_safety": 1.0,
       "groundedness": 1.0,
       "cost_usd": 0.0045000000000000005,
-      "latency_ms": 9.547462999762502,
+      "latency_ms": 4.7241930005839095,
       "steps": 8
     },
     {
@@ -92,7 +92,7 @@
       "action_safety": 1.0,
       "groundedness": 1.0,
       "cost_usd": 0.0045000000000000005,
-      "latency_ms": 8.913958001357969,
+      "latency_ms": 4.657257999497233,
       "steps": 9
     },
     {
@@ -104,7 +104,7 @@
       "action_safety": 1.0,
       "groundedness": 1.0,
       "cost_usd": 0.0045000000000000005,
-      "latency_ms": 9.87293200159911,
+      "latency_ms": 5.444383001304232,
       "steps": 8
     }
   ]

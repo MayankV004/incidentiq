@@ -18,6 +18,16 @@ IncidentIQ is a multi-agent AI on-call assistant. When a system alert fires, Lan
 | 10 | [Deployment and Ops](10_DEPLOYMENT_AND_OPS.md) | Docker, Oracle Cloud, AWS, CI/CD, monitoring |
 | 11 | [14-Day Roadmap](11_ROADMAP_14_DAY.md) | Day-by-day plan with done-when criteria |
 
+## Subsystem Guides & Benchmarks
+
+| Subsystem | Link | Description |
+|---|---|---|
+| **Evaluation Suite** | [evals/README.md](../evals/README.md) | `IncidentBench-mini` results, exact metric formulas, calculation walkthrough, and red-team tests |
+| **Model Context Protocol** | [mcp_servers/README.md](../mcp_servers/README.md) | FastMCP metrics, logs, and remediation servers with security quarantine |
+| **Target Shop Services** | [shop/README.md](../shop/README.md) | E-commerce microservices, Prometheus telemetry, and chaos endpoints |
+| **Knowledge Base** | [knowledge/README.md](../knowledge/README.md) | Operational runbooks, postmortems, and in-memory BM25 retrieval |
+| **Frontend UI** | [ui/README.md](../ui/README.md) | Next.js 16 App Router, Turbopack, and SSE live timeline dashboard |
+
 ## Reading order
 
 PRD, Architecture, Tech Stack, then Database, API and Agent/MCP design while building. Evaluation and Security are written before coding the agents so that tests drive the work.
