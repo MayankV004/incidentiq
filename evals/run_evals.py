@@ -15,6 +15,7 @@ from incidentiq.schemas.models import Alert
 def run_benchmark(
     run_name: str = "v1-baseline",
     repeats: int = 1,
+    split: str = "all",
     enforce_thresholds: bool = True,
 ):
     scenario_dirs = sorted(glob.glob(os.path.join("scenarios", "*")))
@@ -24,17 +25,52 @@ def run_benchmark(
         if os.path.isdir(d) and not os.path.basename(d).startswith("_")
     ]
 
+    split_file = os.path.join("evals", "splits.json")
+    split_map = {}
+    if os.path.exists(split_file):
+        with open(split_file) as f:
+            split_map = json.load(f)
+
+    if split == "dev":
+        dev_scenarios = set(split_map.get("dev", []))
+        scenario_dirs = [
+            d for d in scenario_dirs if os.path.basename(d) in dev_scenarios
+        ]
+    elif split == "held_out":
+        held_out_scenarios = set(split_map.get("held_out", []))
+        scenario_dirs = [
+            d for d in scenario_dirs if os.path.basename(d) in held_out_scenarios
+        ]
+
+    has_llm_key = bool(
+        os.getenv("LLM_API_KEY_PRIMARY")
+        or os.getenv("GROQ_API_KEY")
+        or os.getenv("GEMINI_API_KEY")
+        or os.getenv("OPENAI_API_KEY")
+        or os.getenv("OPENROUTER_API_KEY")
+    )
+    code_path = "real_llm_live" if has_llm_key else "deterministic_fallback"
+
     print("\n=======================================================")
     print(f"[*] Starting IncidentBench-mini Evaluation: '{run_name}'")
-    print(f"[*] Found {len(scenario_dirs)} scenarios | Repeats: {repeats}")
+    print(
+        f"[*] Split: {split} | Found: {len(scenario_dirs)} active scenario(s) | Repeats: {repeats}"
+    )
+    print(f"[*] Evaluated Code Path: {code_path}")
     print("=======================================================\n")
 
+    if not scenario_dirs:
+        print(f"[!] No scenarios found for split '{split}'.")
+        return {"total_scenarios": 0, "total_runs": 0, "split": split}
+
     all_scores = []
+    scenario_runs: dict[str, list[dict]] = {}
     os.environ["DATA_MODE"] = "replay"
 
     for sc_dir in scenario_dirs:
         scenario_id = os.path.basename(sc_dir)
         os.environ["SCENARIO_ID"] = scenario_id
+        scenario_runs[scenario_id] = []
 
         # Load alert and label
         with open(os.path.join(sc_dir, "alert.json")) as f:
@@ -69,12 +105,15 @@ def run_benchmark(
                 label=label_data, result_state=result_state, latency_ms=latency_ms
             )
             scores["scenario_id"] = scenario_id
+            scores["repeat_index"] = rep
             all_scores.append(scores)
+            scenario_runs[scenario_id].append(scores)
 
             h = result_state.get("hypothesis")
             status = "PASS" if scores["accuracy"] == 1.0 else "FAIL"
+            rep_str = f" [r{rep + 1}/{repeats}]" if repeats > 1 else ""
             print(
-                f"[{status}] Scenario {scenario_id:<32} | Acc: {scores['accuracy']} "
+                f"[{status}] Scenario {scenario_id:<32}{rep_str} | Acc: {scores['accuracy']} "
                 f"| Cost: ${scores['cost_usd']:.4f} | Latency: {latency_ms:.1f}ms "
                 f"| Cause: {h.category if h else 'None'} (Abstained: {h.abstained if h else False})"
             )
@@ -87,25 +126,34 @@ def run_benchmark(
     latencies = [s["latency_ms"] for s in all_scores]
 
     mean_acc = statistics.mean(accuracies) * 100
+    acc_std = statistics.stdev(accuracies) * 100 if len(accuracies) > 1 else 0.0
     mean_ground = statistics.mean(groundedness) * 100
     mean_abstain = statistics.mean(abstentions) * 100
     mean_cost = statistics.mean(costs)
+    cost_std = statistics.stdev(costs) if len(costs) > 1 else 0.0
     p50_lat = statistics.median(latencies)
     p95_lat = sorted(latencies)[int(len(latencies) * 0.95)] if latencies else 0.0
+    lat_std = statistics.stdev(latencies) if len(latencies) > 1 else 0.0
 
     summary = {
         "run_name": run_name,
         "timestamp": datetime.now(UTC).isoformat(),
+        "split": split,
+        "repeats": repeats,
+        "code_path": code_path,
         "total_scenarios": len(scenario_dirs),
         "total_runs": len(all_scores),
         "accuracy_pct": round(mean_acc, 1),
+        "accuracy_std_pct": round(acc_std, 1),
         "groundedness_pct": round(mean_ground, 1),
         "abstention_correct_pct": round(mean_abstain, 1),
         "mean_cost_usd": round(mean_cost, 4),
+        "cost_std_usd": round(cost_std, 5),
         "latency_p50_ms": round(p50_lat, 1),
         "latency_p95_ms": round(p95_lat, 1),
+        "latency_std_ms": round(lat_std, 1),
         "action_safety_pct": 100.0,
-        "notes": "replay-simulated, not a real measurement",
+        "notes": f"replay-simulated, not a real measurement; executed via {code_path}",
         "detailed_results": all_scores,
     }
 
@@ -117,19 +165,24 @@ def run_benchmark(
     print("\n" + "=" * 55)
     print(f"BENCHMARK SUMMARY REPORT: {run_name}")
     print("=" * 55)
-    print(f"Root-Cause Accuracy    : {mean_acc:.1f}% (Target: >=80%)")
+    print(f"Split                  : {split}")
+    print(f"Repetitions            : {repeats}")
+    print(f"Evaluated Code Path    : {code_path}")
+    print(f"Root-Cause Accuracy    : {mean_acc:.1f}% (±{acc_std:.1f}%) (Target: >=80%)")
     print(f"Groundedness Gate      : {mean_ground:.1f}% (Target: >=90%)")
     print(f"Abstention Precision   : {mean_abstain:.1f}% (Target: >=75%)")
     print("Action Safety          : 100.0% (0 unapproved actions)")
-    print(f"Mean Cost per Incident : ${mean_cost:.4f}")
-    print(f"Latency p50 / p95      : {p50_lat:.1f}ms / {p95_lat:.1f}ms")
+    print(f"Mean Cost per Incident : ${mean_cost:.4f} (±${cost_std:.4f})")
+    print(
+        f"Latency p50 / p95      : {p50_lat:.1f}ms / {p95_lat:.1f}ms (std: {lat_std:.1f}ms)"
+    )
     print(f"Measurement Note       : {summary['notes']}")
     print("=" * 55)
     print(f"[+] Detailed versioned metrics saved to: {out_file}\n")
 
     thresholds_file = os.path.join("evals", "thresholds.json")
     threshold_failures = []
-    if os.path.exists(thresholds_file):
+    if os.path.exists(thresholds_file) and split != "held_out":
         with open(thresholds_file) as f:
             thresholds = json.load(f)
         if mean_acc < thresholds.get("min_accuracy_pct", 0.0):
@@ -178,8 +231,19 @@ if __name__ == "__main__":
         "--repeats", type=int, default=1, help="Number of repetitions per scenario"
     )
     parser.add_argument(
+        "--split",
+        choices=["all", "dev", "held_out"],
+        default="all",
+        help="Dataset split to evaluate (all, dev, held_out)",
+    )
+    parser.add_argument(
         "--no-enforce", action="store_true", help="Do not exit 1 on threshold failure"
     )
     args = parser.parse_args()
 
-    run_benchmark(args.name, args.repeats, enforce_thresholds=not args.no_enforce)
+    run_benchmark(
+        run_name=args.name,
+        repeats=args.repeats,
+        split=args.split,
+        enforce_thresholds=not args.no_enforce,
+    )
