@@ -12,16 +12,38 @@ PII_PATTERNS = [
 # Injection Signatures (Prompt injection detection heuristics)
 INJECTION_SIGNATURES = [
     r"ignore\s+(all\s+)?(previous|prior)\s+instructions",
-    r"disregard\s+(above|all)",
-    r"system\s+override",
+    r"disregard\s+(above|all|prior|guidelines)",
+    r"(system|instruction)\s+override",
     r"print\s+(your\s+)?(system\s+)?prompt",
-    r"drop\s+table",
+    r"drop\s+(table|database)",
     r"restart\s+all\s+services\s+immediately",
+    r"reboot\s+server",
+    r"rm\s+-rf",
+    r"repeat\s+(the\s+)?exact\s+system\s+instructions",
+    r"output\s+the\s+hidden\s+developer",
+    r"execute\s+rollback_deploy\s+immediately",
+    r"grant\s+root",
 ]
 
 
 class GuardrailManager:
     """Multi-layer security & reliability guardrails for IncidentIQ."""
+
+    @staticmethod
+    def scan_prompt_leakage(text: str) -> tuple[bool, str | None]:
+        """Detects whether system prompt or capability secret leaked into text."""
+        markers = [
+            "root cause synthesis agent",
+            "incidentiq capability secret",
+            "approval_token_secret",
+            "api_key=",
+            "dev_local_secret_key",
+        ]
+        text_lower = text.lower()
+        for m in markers:
+            if m in text_lower:
+                return True, f"System prompt/secret leakage detected: {m}"
+        return False, None
 
     @staticmethod
     def redact_pii(text: str) -> tuple[str, bool]:
