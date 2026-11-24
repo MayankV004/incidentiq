@@ -33,6 +33,7 @@ class Hypothesis(BaseModel):
     suggested_action: Action | None = None
     abstained: bool = False
     abstain_reason: str | None = None
+    is_fallback: bool = False
 
 
 class KBChunk(BaseModel):

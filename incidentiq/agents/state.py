@@ -4,7 +4,7 @@ from typing import Annotated, Any, TypedDict
 from incidentiq.schemas.models import Alert, Evidence, Hypothesis
 
 
-class IncidentState(TypedDict):
+class IncidentState(TypedDict, total=False):
     incident_id: str
     alert: Alert
     plan: list[str]  # e.g. ["metrics", "logs", "runbook"]
@@ -16,3 +16,4 @@ class IncidentState(TypedDict):
     approval: dict[str, Any] | None
     cost_usd: Annotated[float, operator.add]
     steps: Annotated[int, operator.add]
+    error: str | None

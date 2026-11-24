@@ -254,21 +254,25 @@ def _call_llm_for_diagnosis(
             else None
         )
 
-        return Hypothesis(
-            category=data.get("category"),
-            service=data.get("service"),
-            confidence=float(data.get("confidence", 0.5)),
-            reasoning=data.get("reasoning", ""),
-            evidence_ids=data.get("evidence_ids", [e.id for e in telemetry_evidence]),
-            suggested_action=suggested_action,
-            abstained=bool(data.get("abstained", False)),
-            abstain_reason=data.get("abstain_reason"),
+        return (
+            Hypothesis(
+                category=data.get("category"),
+                service=data.get("service"),
+                confidence=float(data.get("confidence", 0.5)),
+                reasoning=data.get("reasoning", ""),
+                evidence_ids=data.get("evidence_ids", [e.id for e in telemetry_evidence]),
+                suggested_action=suggested_action,
+                abstained=bool(data.get("abstained", False)),
+                abstain_reason=data.get("abstain_reason"),
+                is_fallback=False,
+            ),
+            None,
         )
     except Exception as e:  # noqa: BLE001
-        logger.warning(
+        logger.error(
             f"LLM diagnosis failed or unconfigured, falling back to deterministic engine: {e}"
         )
-        return None
+        return None, str(e)
 
 
 def root_cause_agent_node(state: IncidentState) -> dict[str, Any]:
@@ -299,7 +303,7 @@ def root_cause_agent_node(state: IncidentState) -> dict[str, Any]:
         }
 
     # 1. Try LLM synthesis if API key is configured
-    llm_hypothesis = _call_llm_for_diagnosis(
+    llm_hypothesis, llm_error = _call_llm_for_diagnosis(
         alert=state["alert"],
         telemetry_evidence=telemetry_evidence,
         kb_evidence=kb_evidence,
@@ -417,13 +421,17 @@ def root_cause_agent_node(state: IncidentState) -> dict[str, Any]:
         suggested_action=suggested_action,
         abstained=abstained,
         abstain_reason=abstain_reason,
+        is_fallback=True,
     )
 
-    return {
+    out: dict[str, Any] = {
         "hypothesis": hypothesis,
         "cost_usd": cost,
         "steps": 1,
     }
+    if llm_error:
+        out["error"] = f"LLM error: {llm_error}"
+    return out
 
 
 def output_guard_node(state: IncidentState) -> dict[str, Any]:

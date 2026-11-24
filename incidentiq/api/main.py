@@ -147,7 +147,7 @@ def broadcast_event(incident_id: str, event: dict[str, Any]):
     try:
         append_event_to_db(incident_id, event)
     except Exception as e:  # noqa: BLE001
-        logger.debug(f"DB append_event failed: {e}")
+        logger.error(f"DB append_event failed: {e}")
     for q in SUBSCRIBERS.get(incident_id, []):
         try:
             q.put_nowait(event)
@@ -350,7 +350,7 @@ def run_incident_workflow(incident_id: str, alert: Alert):
         try:
             upsert_incident(INCIDENTS_DB[incident_id])
         except Exception as e:  # noqa: BLE001
-            logger.debug(f"DB upsert failed: {e}")
+            logger.error(f"DB upsert failed: {e}")
 
         broadcast_event(
             incident_id,
