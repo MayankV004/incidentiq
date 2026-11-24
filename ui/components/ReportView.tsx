@@ -23,7 +23,6 @@ export function ReportView({
   onSelectEvidence,
   onRequestApproval,
   onReject,
-  remediationResult,
 }: ReportViewProps) {
   const [activeTab, setActiveTab] = useState<"report" | "evidence" | "trace">("report");
 
@@ -31,8 +30,11 @@ export function ReportView({
     return null;
   }
 
-  const confidencePct = hypothesis ? Math.round(hypothesis.confidence * 100) : 87;
-  const groundednessPct = hypothesis ? Math.round((hypothesis.groundedness_score ?? 1.0) * 100) : 95;
+  const confidencePct = hypothesis ? Math.round(hypothesis.confidence * 100) : 0;
+  const groundednessPct =
+    hypothesis?.groundedness_score !== undefined
+      ? Math.round(hypothesis.groundedness_score * 100)
+      : null;
   const isAwaitingApproval = status === "awaiting_approval";
   const isExecuted = status === "remediation_executed";
   const isRejected = status === "rejected_by_human";
@@ -82,7 +84,7 @@ export function ReportView({
           </div>
           <div className="flex items-center gap-1.5 text-lime-600 dark:text-lime-400">
             <ShieldCheck className="w-3.5 h-3.5" />
-            <span>Groundedness {groundednessPct}%</span>
+            <span>Groundedness {groundednessPct !== null ? `${groundednessPct}%` : "—"}</span>
           </div>
         </div>
       </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { IncidentSummary } from "../../types/api";
 import { fetchIncidents } from "../../lib/api";
@@ -14,21 +14,39 @@ interface IncidentsViewProps {
 export function IncidentsView({ onSelectIncident }: IncidentsViewProps) {
   const [incidents, setIncidents] = useState<IncidentSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
       const data = await fetchIncidents();
       setIncidents(data);
+      setLoadError(null);
     } catch (err) {
-      console.error(err);
+      setLoadError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    loadData();
+    let active = true;
+    fetchIncidents()
+      .then((data) => {
+        if (!active) return;
+        setIncidents(data);
+        setLoadError(null);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setLoadError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const getStatusBadge = (status: string) => {
@@ -50,6 +68,24 @@ export function IncidentsView({ onSelectIncident }: IncidentsViewProps) {
         return (
           <span className="px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700">
             Abstained
+          </span>
+        );
+      case "budget_exceeded":
+        return (
+          <span className="px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+            Budget Exceeded
+          </span>
+        );
+      case "failed":
+        return (
+          <span className="px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20">
+            Failed
+          </span>
+        );
+      case "rejected_by_human":
+        return (
+          <span className="px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700">
+            Rejected
           </span>
         );
       case "running":
@@ -88,6 +124,12 @@ export function IncidentsView({ onSelectIncident }: IncidentsViewProps) {
         </button>
       </div>
 
+      {loadError && (
+        <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs font-mono text-red-700 dark:text-red-300">
+          Failed to load incidents: {loadError}
+        </div>
+      )}
+
       <div className="w-full rounded-xl border bg-white dark:bg-[#121215] border-zinc-200/80 dark:border-zinc-800/80 overflow-hidden shadow-xs">
         <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60 font-mono text-xs">
           <div className="bg-zinc-50/60 dark:bg-zinc-950/60 px-6 py-2.5 text-zinc-400 dark:text-zinc-500 text-[11px] grid grid-cols-12 gap-3 uppercase tracking-wider">
@@ -113,7 +155,10 @@ export function IncidentsView({ onSelectIncident }: IncidentsViewProps) {
             incidents.map((inc) => (
               <div
                 key={inc.incident_id}
-                className="px-6 py-3.5 grid grid-cols-12 gap-3 items-center hover:bg-zinc-50 dark:hover:bg-zinc-900/40 transition-colors"
+                onClick={() => onSelectIncident?.(inc.incident_id)}
+                className={`px-6 py-3.5 grid grid-cols-12 gap-3 items-center hover:bg-zinc-50 dark:hover:bg-zinc-900/40 transition-colors ${
+                  onSelectIncident ? "cursor-pointer" : ""
+                }`}
               >
                 <div className="col-span-3">
                   <span className="text-zinc-900 dark:text-zinc-200 font-semibold block">
@@ -128,7 +173,7 @@ export function IncidentsView({ onSelectIncident }: IncidentsViewProps) {
                   <span className="text-zinc-800 dark:text-zinc-300 font-sans text-xs truncate block font-medium">
                     {inc.root_cause || inc.symptom}
                   </span>
-                  {inc.confidence && (
+                  {inc.confidence !== undefined && inc.confidence !== null && (
                     <span className="text-[10px] text-zinc-400 font-mono">
                       Confidence: {Math.round(inc.confidence * 100)}%
                     </span>

@@ -12,47 +12,50 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
+function applyThemeToDom(t: Theme) {
+  const root = document.documentElement;
+  const body = document.body;
+  if (t === "dark") {
+    root.classList.add("dark");
+    root.classList.remove("light");
+    root.style.colorScheme = "dark";
+    body.classList.add("dark");
+    body.classList.remove("light");
+  } else {
+    root.classList.remove("dark");
+    root.classList.add("light");
+    root.style.colorScheme = "light";
+    body.classList.remove("dark");
+    body.classList.add("light");
+  }
+}
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>("dark");
-  const [mounted, setMounted] = useState(false);
+  const [theme, setThemeState] = useState<Theme>(() => {
+    if (typeof window !== "undefined") {
+      const saved = window.localStorage.getItem("incidentiq_theme") as Theme | null;
+      if (saved === "light" || saved === "dark") {
+        return saved;
+      }
+    }
+    return "dark";
+  });
 
   useEffect(() => {
-    const saved = localStorage.getItem("incidentiq_theme") as Theme | null;
-    const initial = saved || "dark";
-    setThemeState(initial);
-    applyTheme(initial);
-    setMounted(true);
-  }, []);
-
-  const applyTheme = (t: Theme) => {
-    const root = document.documentElement;
-    const body = document.body;
-    if (t === "dark") {
-      root.classList.add("dark");
-      root.classList.remove("light");
-      root.style.colorScheme = "dark";
-      body.classList.add("dark");
-      body.classList.remove("light");
-    } else {
-      root.classList.remove("dark");
-      root.classList.add("light");
-      root.style.colorScheme = "light";
-      body.classList.remove("dark");
-      body.classList.add("light");
-    }
-  };
+    applyThemeToDom(theme);
+  }, [theme]);
 
   const setThemeWithRipple = (newTheme: Theme, event?: React.MouseEvent) => {
-    // Check if View Transitions API is supported
-    const doc = document as any;
-    if (!doc.startViewTransition || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    if (
+      typeof document.startViewTransition !== "function" ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
       setThemeState(newTheme);
       localStorage.setItem("incidentiq_theme", newTheme);
-      applyTheme(newTheme);
+      applyThemeToDom(newTheme);
       return;
     }
 
-    // Get origin coordinates of click
     const x = event?.clientX ?? window.innerWidth / 2;
     const y = event?.clientY ?? window.innerHeight / 2;
     const endRadius = Math.hypot(
@@ -60,10 +63,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       Math.max(y, window.innerHeight - y)
     );
 
-    const transition = doc.startViewTransition(() => {
+    const transition = document.startViewTransition(() => {
       setThemeState(newTheme);
       localStorage.setItem("incidentiq_theme", newTheme);
-      applyTheme(newTheme);
+      applyThemeToDom(newTheme);
     });
 
     transition.ready.then(() => {

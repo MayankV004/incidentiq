@@ -15,9 +15,10 @@ import { createIncident, submitApproval } from "../../lib/api";
 interface LiveViewProps {
   scenarios: Scenario[];
   initialScenario?: Scenario;
+  onIncidentCreated?: () => void;
 }
 
-export function LiveView({ scenarios, initialScenario }: LiveViewProps) {
+export function LiveView({ scenarios, initialScenario, onIncidentCreated }: LiveViewProps) {
   const [selectedScenario, setSelectedScenario] = useState<Scenario | null>(
     initialScenario || scenarios[0] || null
   );
@@ -26,8 +27,10 @@ export function LiveView({ scenarios, initialScenario }: LiveViewProps) {
   const [selectedEvidence, setSelectedEvidence] = useState<Evidence | null>(null);
   const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
   const [isLaunching, setIsLaunching] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  // Connect SSE streaming hook
+  const activeScenario = selectedScenario || initialScenario || scenarios[0] || null;
+
   const {
     events,
     status,
@@ -43,78 +46,97 @@ export function LiveView({ scenarios, initialScenario }: LiveViewProps) {
   } = useIncidentStream(activeIncidentId);
 
   const handleLaunch = async () => {
-    if (!selectedScenario) return;
+    if (!activeScenario) return;
     setIsLaunching(true);
+    setActionError(null);
     try {
       const res = await createIncident({
-        service: selectedScenario.service,
-        symptom: selectedScenario.symptom,
-        window_start: selectedScenario.window_start,
-        window_end: selectedScenario.window_end,
-        scenario_id: selectedScenario.id,
+        service: activeScenario.service,
+        symptom: activeScenario.symptom,
+        window_start: activeScenario.window_start,
+        window_end: activeScenario.window_end,
+        scenario_id: activeScenario.id,
       });
 
       setActiveIncidentId(res.incident_id);
       setActiveIncident({
         incident_id: res.incident_id,
-        scenario_id: selectedScenario.id,
+        scenario_id: activeScenario.id,
         alert: {
-          service: selectedScenario.service,
-          symptom: selectedScenario.symptom,
-          window_start: selectedScenario.window_start,
-          window_end: selectedScenario.window_end,
+          service: activeScenario.service,
+          symptom: activeScenario.symptom,
+          window_start: activeScenario.window_start,
+          window_end: activeScenario.window_end,
         },
         status: "queued",
         created_at: Date.now(),
       });
+      onIncidentCreated?.();
     } catch (err) {
-      console.error("Failed to launch incident:", err);
+      setActionError(err instanceof Error ? err.message : "Failed to launch incident");
     } finally {
       setIsLaunching(false);
     }
   };
 
   const handleConfirmApproval = async () => {
-    if (!activeIncidentId || !approval?.approval_token) return;
+    if (!activeIncidentId || !approval?.approval_id) {
+      setActionError("Missing approval_id for authorization request.");
+      return;
+    }
+    setActionError(null);
     try {
-      await submitApproval(activeIncidentId, "approve", approval.approval_token);
+      await submitApproval(activeIncidentId, "approve", approval.approval_id);
       setStatus("remediation_executed");
       setIsApprovalModalOpen(false);
     } catch (err) {
-      console.error("Approval execution failed:", err);
+      setActionError(err instanceof Error ? err.message : "Approval execution failed");
     }
   };
 
   const handleReject = async () => {
-    if (!activeIncidentId || !approval?.approval_token) return;
+    if (!activeIncidentId || !approval?.approval_id) {
+      setActionError("Missing approval_id for rejection request.");
+      return;
+    }
+    setActionError(null);
     try {
-      await submitApproval(activeIncidentId, "reject", approval.approval_token);
+      await submitApproval(activeIncidentId, "reject", approval.approval_id);
       setStatus("rejected_by_human");
     } catch (err) {
-      console.error("Reject execution failed:", err);
+      setActionError(err instanceof Error ? err.message : "Reject execution failed");
     }
   };
 
   return (
     <div className="w-full space-y-6">
-      {/* 1. Scenario Selector */}
       <ScenarioPicker
         scenarios={scenarios}
-        selectedScenario={selectedScenario}
+        selectedScenario={activeScenario}
         onSelectScenario={setSelectedScenario}
         onLaunch={handleLaunch}
         isLoading={isLaunching}
       />
 
-      {/* 2. Timeline Stepper (Full-width hero while running, collapses to 1-line header when done) */}
+      {actionError && (
+        <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs font-mono text-red-700 dark:text-red-300">
+          {actionError}
+        </div>
+      )}
+
       {(status !== "idle" || events.length > 0) && (
         <AgentTimeline
-          alert={activeIncident?.alert || (selectedScenario ? {
-            service: selectedScenario.service,
-            symptom: selectedScenario.symptom,
-            window_start: selectedScenario.window_start,
-            window_end: selectedScenario.window_end,
-          } : undefined)}
+          alert={
+            activeIncident?.alert ||
+            (activeScenario
+              ? {
+                  service: activeScenario.service,
+                  symptom: activeScenario.symptom,
+                  window_start: activeScenario.window_start,
+                  window_end: activeScenario.window_end,
+                }
+              : undefined)
+          }
           events={events}
           status={status}
           costUsd={costUsd}
@@ -124,19 +146,19 @@ export function LiveView({ scenarios, initialScenario }: LiveViewProps) {
         />
       )}
 
-      {/* 3. Wireframe Empty State for Idle */}
       {status === "idle" && (
         <div className="w-full rounded-xl border bg-white dark:bg-[#121215] border-zinc-200/80 dark:border-zinc-800/80 p-16 text-center space-y-2 font-mono shadow-xs">
           <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
             No active incident
           </div>
           <div className="text-xs text-zinc-500 max-w-md mx-auto">
-            Pick a scenario, or inject a fault in Shop Control.
+            {scenarios.length > 0
+              ? "Pick a scenario above and launch an investigation."
+              : "No scenarios loaded from the backend API yet."}
           </div>
         </div>
       )}
 
-      {/* 4. Awaiting Approval or Completed Report */}
       {(status === "awaiting_approval" ||
         status === "completed" ||
         status === "remediation_executed" ||
@@ -160,25 +182,28 @@ export function LiveView({ scenarios, initialScenario }: LiveViewProps) {
         />
       )}
 
-      {/* 5. Abstained State Panel */}
-      {status === "abstained" && <AbstainedPanel hypothesis={hypothesis} />}
+      {status === "abstained" && (
+        <AbstainedPanel hypothesis={hypothesis} evidenceList={evidenceList} events={events} />
+      )}
 
-      {/* 6. Failed State Panel */}
-      {status === "failed" && (
+      {(status === "failed" || status === "budget_exceeded") && (
         <FailedPanel
-          error={error || undefined}
+          error={
+            error ||
+            (status === "budget_exceeded"
+              ? "Agent step or cost budget exceeded before completion."
+              : undefined)
+          }
           partialEvidence={evidenceList}
           onRetry={handleLaunch}
         />
       )}
 
-      {/* Slide-over Citation Drawer */}
       <CitationSheet
         evidence={selectedEvidence}
         onClose={() => setSelectedEvidence(null)}
       />
 
-      {/* Approval Confirmation Dialog */}
       <ApprovalModal
         isOpen={isApprovalModalOpen}
         approval={approval}

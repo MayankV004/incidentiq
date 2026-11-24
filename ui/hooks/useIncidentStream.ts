@@ -10,7 +10,7 @@ import {
   IncidentStatus,
 } from "../types/api";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 export function useIncidentStream(incidentId: string | null) {
   const [events, setEvents] = useState<IncidentEvent[]>([]);
@@ -28,8 +28,17 @@ export function useIncidentStream(incidentId: string | null) {
 
   useEffect(() => {
     if (!incidentId) {
+      return;
+    }
+
+    let isMounted = true;
+    const eventSource = new EventSource(
+      `${API_BASE}/api/v1/incidents/${encodeURIComponent(incidentId)}/stream`
+    );
+
+    eventSource.onopen = () => {
+      if (!isMounted) return;
       setEvents([]);
-      setStatus("idle");
       setEvidenceList([]);
       setHypothesis(null);
       setApproval(null);
@@ -38,16 +47,10 @@ export function useIncidentStream(incidentId: string | null) {
       setSteps(0);
       setLatencyMs(0);
       setLangfuseTraceUrl(null);
-      setIsStreaming(false);
       setError(null);
-      return;
-    }
-
-    let isMounted = true;
-    setIsStreaming(true);
-    setStatus("running");
-
-    const eventSource = new EventSource(`${API_BASE}/v1/incidents/${incidentId}/stream`);
+      setIsStreaming(true);
+      setStatus("running");
+    };
 
     eventSource.onmessage = (e) => {
       if (!isMounted) return;
@@ -61,7 +64,6 @@ export function useIncidentStream(incidentId: string | null) {
         if (ev.cost_usd !== undefined) setCostUsd(ev.cost_usd);
         if (ev.steps !== undefined) setSteps(ev.steps);
 
-        // Process typed data payload
         if (ev.data) {
           const d = ev.data as Record<string, unknown>;
           if (d.evidence && Array.isArray(d.evidence)) {
@@ -91,9 +93,13 @@ export function useIncidentStream(incidentId: string | null) {
           }
         }
 
-        // Check terminal state
         if (ev.type === "done" && ev.status) {
           setStatus(ev.status);
+          if (ev.status === "budget_exceeded") {
+            setError("Incident terminated because the agent step or cost budget was exceeded.");
+          } else if (ev.status === "failed" && ev.summary) {
+            setError(ev.summary);
+          }
           setIsStreaming(false);
           eventSource.close();
         }
@@ -104,12 +110,18 @@ export function useIncidentStream(incidentId: string | null) {
 
     eventSource.onerror = () => {
       if (!isMounted) return;
-      // On error, close eventSource and perform single REST poll fallback
       eventSource.close();
       setIsStreaming(false);
 
-      fetch(`${API_BASE}/v1/incidents/${incidentId}`)
-        .then((r) => r.json())
+      fetch(`${API_BASE}/api/v1/incidents/${encodeURIComponent(incidentId)}`, {
+        cache: "no-store",
+      })
+        .then(async (r) => {
+          if (!r.ok) {
+            throw new Error(`HTTP ${r.status}`);
+          }
+          return r.json();
+        })
         .then((data) => {
           if (!isMounted) return;
           if (data.status) setStatus(data.status);
@@ -117,11 +129,15 @@ export function useIncidentStream(incidentId: string | null) {
           if (data.evidence) setEvidenceList(data.evidence);
           if (data.approval) setApproval(data.approval);
           if (data.guardrail_flags) setGuardrailFlags(data.guardrail_flags);
-          if (data.cost_usd) setCostUsd(data.cost_usd);
-          if (data.latency_ms) setLatencyMs(data.latency_ms);
-          if (data.steps) setSteps(data.steps);
+          if (data.cost_usd !== undefined) setCostUsd(data.cost_usd);
+          if (data.latency_ms !== undefined) setLatencyMs(data.latency_ms);
+          if (data.steps !== undefined) setSteps(data.steps);
           if (data.events) setEvents(data.events);
           if (data.langfuse_trace_url) setLangfuseTraceUrl(data.langfuse_trace_url);
+          if (data.error) setError(data.error);
+          else if (data.status === "budget_exceeded") {
+            setError("Incident terminated because the agent step or cost budget was exceeded.");
+          }
         })
         .catch((err) => {
           if (!isMounted) return;
@@ -136,18 +152,18 @@ export function useIncidentStream(incidentId: string | null) {
   }, [incidentId]);
 
   return {
-    events,
-    status,
+    events: incidentId ? events : [],
+    status: incidentId ? status : "idle",
     setStatus,
-    evidenceList,
-    hypothesis,
-    approval,
-    guardrailFlags,
-    costUsd,
-    steps,
-    latencyMs,
-    langfuseTraceUrl,
-    isStreaming,
-    error,
+    evidenceList: incidentId ? evidenceList : [],
+    hypothesis: incidentId ? hypothesis : null,
+    approval: incidentId ? approval : null,
+    guardrailFlags: incidentId ? guardrailFlags : [],
+    costUsd: incidentId ? costUsd : 0,
+    steps: incidentId ? steps : 0,
+    latencyMs: incidentId ? latencyMs : 0,
+    langfuseTraceUrl: incidentId ? langfuseTraceUrl : null,
+    isStreaming: incidentId ? isStreaming : false,
+    error: incidentId ? error : null,
   };
 }

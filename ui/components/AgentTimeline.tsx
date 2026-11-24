@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Alert, Evidence, IncidentEvent, IncidentStatus } from "../types/api";
+import { Alert, Evidence, GuardrailFlag, IncidentEvent, IncidentStatus } from "../types/api";
 import { formatCost, formatLatency } from "../lib/utils";
 
 interface AgentTimelineProps {
@@ -22,13 +22,13 @@ interface StepMeta {
 }
 
 const ORDERED_STEPS: StepMeta[] = [
-  { node: "input_guard", name: "Input guard", defaultDetail: "scanning alert for PII & injection" },
-  { node: "supervisor", name: "Supervisor", defaultDetail: "formulating investigation plan" },
-  { node: "metrics_agent", name: "Metrics agent", defaultDetail: "querying prometheus anomalies" },
-  { node: "logs_agent", name: "Logs agent", defaultDetail: "clustering untrusted logs" },
-  { node: "runbook_agent", name: "Runbook agent", defaultDetail: "retrieving runbook SOPs" },
-  { node: "root_cause_agent", name: "Root-cause agent", defaultDetail: "synthesizing diagnosis" },
-  { node: "output_guard", name: "Output guard", defaultDetail: "groundedness gate check" },
+  { node: "input_guard", name: "Input guard", defaultDetail: "waiting for input scan" },
+  { node: "supervisor", name: "Supervisor", defaultDetail: "pending investigation plan" },
+  { node: "metrics_agent", name: "Metrics agent", defaultDetail: "pending metrics query" },
+  { node: "logs_agent", name: "Logs agent", defaultDetail: "pending log clustering" },
+  { node: "runbook_agent", name: "Runbook agent", defaultDetail: "pending runbook retrieval" },
+  { node: "root_cause_agent", name: "Root-cause agent", defaultDetail: "pending synthesis" },
+  { node: "output_guard", name: "Output guard", defaultDetail: "pending groundedness check" },
 ];
 
 export function AgentTimeline({
@@ -41,15 +41,10 @@ export function AgentTimeline({
   onSelectEvidence,
 }: AgentTimelineProps) {
   const isRunning = status === "running" || status === "queued";
-  const [isExpanded, setIsExpanded] = useState<boolean>(isRunning);
+  const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
   const [expandedStepNode, setExpandedStepNode] = useState<string | null>(null);
 
-  React.useEffect(() => {
-    if (isRunning) {
-      setIsExpanded(true);
-    }
-  }, [isRunning]);
-
+  const isExpanded = userExpanded ?? isRunning;
   const completedNodes = new Set(events.map((e) => e.node));
 
   const getStepState = (node: string, index: number): "done" | "active" | "pending" => {
@@ -61,48 +56,90 @@ export function AgentTimeline({
 
   const getEventsForNode = (node: string) => events.filter((e) => e.node === node);
 
-  const allFlags = events.flatMap((e) => (e.data?.guardrail_flags as any[]) || []);
+  const allFlags = events.flatMap(
+    (e) => (e.data?.guardrail_flags as GuardrailFlag[] | undefined) || []
+  );
   const flagCount = allFlags.length;
+  const displayedSteps = steps > 0 ? steps : completedNodes.size;
 
   const toggleStepDetails = (node: string) => {
     setExpandedStepNode((prev) => (prev === node ? null : node));
   };
 
+  const renderStatusBadge = () => {
+    if (isRunning) {
+      return (
+        <div className="flex items-center gap-1.5 text-lime-600 dark:text-lime-400 font-semibold">
+          <span className="w-2 h-2 rounded-full bg-lime-400 animate-ping shadow-[0_0_8px_#a3e635]" />
+          <span>◐ Running</span>
+        </div>
+      );
+    }
+    if (status === "awaiting_approval") {
+      return (
+        <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-semibold">
+          <span>⚠ Awaiting approval</span>
+        </div>
+      );
+    }
+    if (status === "abstained") {
+      return (
+        <div className="flex items-center gap-1.5 text-zinc-500 font-medium">
+          <span>○ Abstained</span>
+        </div>
+      );
+    }
+    if (status === "budget_exceeded") {
+      return (
+        <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-semibold">
+          <span>⚠ Budget exceeded</span>
+        </div>
+      );
+    }
+    if (status === "failed") {
+      return (
+        <div className="flex items-center gap-1.5 text-red-600 dark:text-red-400 font-semibold">
+          <span>✕ Failed</span>
+        </div>
+      );
+    }
+    if (status === "rejected_by_human") {
+      return (
+        <div className="flex items-center gap-1.5 text-zinc-500 font-medium">
+          <span>○ Rejected</span>
+        </div>
+      );
+    }
+    return (
+      <div className="flex items-center gap-1.5 text-lime-600 dark:text-lime-400 font-medium">
+        <span>✓ Resolved</span>
+      </div>
+    );
+  };
+
   return (
     <div className="w-full rounded-xl border transition-all duration-200 bg-white dark:bg-[#121215] border-zinc-200/80 dark:border-zinc-800/80 shadow-xs overflow-hidden">
-      {/* 1. Header: orders · p95 4s, errors 12% · last 30m    ◐ Running $0.002 4.1s */}
       <div className="px-6 py-3.5 border-b border-zinc-200/60 dark:border-zinc-800/60 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
         <div className="flex items-center gap-2 text-zinc-700 dark:text-zinc-300">
           <span className="font-semibold text-zinc-900 dark:text-zinc-100 font-sans">
-            {alert?.service || "orders"}
+            {alert?.service || "—"}
           </span>
           <span className="text-zinc-400 dark:text-zinc-600">·</span>
           <span className="text-zinc-600 dark:text-zinc-400">
-            {alert?.symptom || "p95 4s, errors 12%"}
+            {alert?.symptom || "No symptom reported"}
           </span>
-          <span className="text-zinc-400 dark:text-zinc-600">·</span>
-          <span className="text-zinc-400 dark:text-zinc-500">last 30m</span>
+          {alert?.window_start && alert?.window_end && (
+            <>
+              <span className="text-zinc-400 dark:text-zinc-600">·</span>
+              <span className="text-zinc-400 dark:text-zinc-500">
+                {alert.window_start} → {alert.window_end}
+              </span>
+            </>
+          )}
         </div>
 
         <div className="flex items-center gap-4 text-xs font-mono">
-          {isRunning ? (
-            <div className="flex items-center gap-1.5 text-lime-600 dark:text-lime-400 font-semibold">
-              <span className="w-2 h-2 rounded-full bg-lime-400 animate-ping shadow-[0_0_8px_#a3e635]" />
-              <span>◐ Running</span>
-            </div>
-          ) : status === "awaiting_approval" ? (
-            <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-semibold">
-              <span>⚠ Awaiting approval</span>
-            </div>
-          ) : status === "abstained" ? (
-            <div className="flex items-center gap-1.5 text-zinc-500 font-medium">
-              <span>○ Abstained</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5 text-lime-600 dark:text-lime-400 font-medium">
-              <span>✓ Resolved</span>
-            </div>
-          )}
+          {renderStatusBadge()}
 
           <span className="text-zinc-700 dark:text-zinc-300 tabular-nums">
             {formatCost(costUsd)}
@@ -113,16 +150,15 @@ export function AgentTimeline({
         </div>
       </div>
 
-      {/* 2. Collapsed summary bar */}
       {!isRunning && (
         <div
-          onClick={() => setIsExpanded(!isExpanded)}
+          onClick={() => setUserExpanded(!isExpanded)}
           className="px-6 py-3 flex items-center justify-between cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900/40 text-xs font-mono text-zinc-600 dark:text-zinc-400 transition-colors"
         >
           <div className="flex items-center gap-2">
             <span>{isExpanded ? "▾" : "▸"}</span>
             <span>
-              {completedNodes.size} steps · {formatLatency(latencyMs)} · {flagCount} guardrail flags
+              {displayedSteps} steps · {formatLatency(latencyMs)} · {flagCount} guardrail flags
             </span>
           </div>
           <span className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 underline decoration-zinc-400 underline-offset-2">
@@ -131,7 +167,6 @@ export function AgentTimeline({
         </div>
       )}
 
-      {/* 3. Stepper Rows with motion collapse/expand (200ms height & opacity) */}
       <AnimatePresence initial={false}>
         {isExpanded && (
           <motion.div
@@ -147,26 +182,19 @@ export function AgentTimeline({
                 const stepEvents = getEventsForNode(step.node);
                 const latestEv = stepEvents[stepEvents.length - 1];
 
-                let detailText = latestEv?.summary || step.defaultDetail;
-                if (step.node === "input_guard") {
-                  detailText = `PII 0 · injections 0`;
-                } else if (step.node === "supervisor" && latestEv?.data?.plan) {
-                  detailText = `plan: ${(latestEv.data.plan as string[]).join(", ")}`;
-                } else if (step.node === "metrics_agent" && state === "done") {
-                  detailText = `db_pool_in_use at max from 14:02`;
-                } else if (step.node === "logs_agent" && state === "done") {
-                  detailText = `312 "too many connections"`;
-                } else if (step.node === "runbook_agent" && state === "active") {
-                  detailText = `retrieving…`;
-                }
-
                 const stepEvidence: Evidence[] = stepEvents.flatMap(
-                  (e) => (e.data?.evidence as Evidence[]) || []
+                  (e) => (e.data?.evidence as Evidence[] | undefined) || []
+                );
+                const stepFlags: GuardrailFlag[] = stepEvents.flatMap(
+                  (e) => (e.data?.guardrail_flags as GuardrailFlag[] | undefined) || []
                 );
 
-                const stepFlags: any[] = stepEvents.flatMap(
-                  (e) => (e.data?.guardrail_flags as any[]) || []
-                );
+                let detailText = latestEv?.summary || step.defaultDetail;
+                if (step.node === "supervisor" && Array.isArray(latestEv?.data?.plan)) {
+                  detailText = `plan: ${(latestEv.data.plan as string[]).join(", ")}`;
+                } else if (state === "active" && !latestEv) {
+                  detailText = "running…";
+                }
 
                 const isStepExpanded = expandedStepNode === step.node;
 
@@ -220,7 +248,7 @@ export function AgentTimeline({
                             key={fIdx}
                             className="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
                           >
-                            {flag.rule || "Injection quarantined"}
+                            {flag.rule || "Guardrail triggered"}
                           </span>
                         ))}
 
@@ -243,7 +271,6 @@ export function AgentTimeline({
                       </div>
                     </div>
 
-                    {/* Step tool trace details */}
                     <AnimatePresence>
                       {isStepExpanded && latestEv && (
                         <motion.div

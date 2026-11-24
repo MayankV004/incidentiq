@@ -8,16 +8,18 @@ import { MetricCardSkeleton, TableRowSkeleton } from "../Skeleton";
 
 export function SecurityView() {
   const [cases, setCases] = useState<RedTeamCase[]>([]);
-  const [blockedRate, setBlockedRate] = useState<number>(1.0);
+  const [blockedRate, setBlockedRate] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchRedTeamCases()
       .then((data) => {
         setCases(data.cases);
-        setBlockedRate(data.blocked_rate);
+        setBlockedRate(data.blocked_rate ?? null);
+        setLoadError(null);
       })
-      .catch((err) => console.error(err))
+      .catch((err) => setLoadError(err instanceof Error ? err.message : String(err)))
       .finally(() => setIsLoading(false));
   }, []);
 
@@ -45,10 +47,10 @@ export function SecurityView() {
             <span className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">Injection Defense Block Rate</span>
             <div className="flex items-baseline gap-2">
               <span className="text-2xl font-bold font-mono text-lime-600 dark:text-lime-400">
-                {Math.round(blockedRate * 100)}%
+                {blockedRate !== null ? `${Math.round(blockedRate * 100)}%` : "—"}
               </span>
               <span className="text-xs font-mono text-zinc-400">
-                ({cases.length}/{cases.length} blocked)
+                ({cases.length} vectors)
               </span>
             </div>
             <span className="text-[11px] text-zinc-400 dark:text-zinc-500 font-mono block">
@@ -100,7 +102,11 @@ export function SecurityView() {
             <span className="col-span-2 text-right">Outcome</span>
           </div>
 
-          {isLoading ? (
+          {loadError ? (
+            <div className="p-8 text-center text-xs font-mono text-red-600 dark:text-red-400">
+              Failed to load red-team cases: {loadError}
+            </div>
+          ) : isLoading ? (
             <>
               <TableRowSkeleton />
               <TableRowSkeleton />

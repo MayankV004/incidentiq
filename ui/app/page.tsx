@@ -11,18 +11,28 @@ import { EvaluationView } from "../components/tabs/EvaluationView";
 import { SecurityView } from "../components/tabs/SecurityView";
 import { ShopView } from "../components/tabs/ShopView";
 import { Scenario } from "../types/api";
-import { fetchScenarios } from "../lib/api";
+import { fetchIncidents, fetchScenarios } from "../lib/api";
 
 function IncidentIQApp() {
   const { theme } = useTheme();
   const [currentTab, setCurrentTab] = useState<NavTab>("live");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
+  const [incidentCount, setIncidentCount] = useState<number>(0);
+
+  const refreshIncidentCount = () => {
+    fetchIncidents()
+      .then((data) => setIncidentCount(data.length))
+      .catch(() => {});
+  };
 
   useEffect(() => {
     fetchScenarios()
       .then((data) => setScenarios(data))
       .catch((err) => console.error("Error loading scenarios:", err));
+    fetchIncidents()
+      .then((data) => setIncidentCount(data.length))
+      .catch(() => {});
   }, []);
 
   return (
@@ -37,7 +47,7 @@ function IncidentIQApp() {
         onSelectTab={setCurrentTab}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-        incidentCount={8}
+        incidentCount={incidentCount}
       />
 
       {/* Full-width Main Area */}
@@ -71,6 +81,7 @@ function IncidentIQApp() {
                 <LiveView
                   scenarios={scenarios}
                   initialScenario={scenarios[0]}
+                  onIncidentCreated={refreshIncidentCount}
                 />
               )}
 

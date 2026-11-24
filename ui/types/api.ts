@@ -5,6 +5,7 @@ export type IncidentStatus =
   | "awaiting_approval"
   | "completed"
   | "abstained"
+  | "budget_exceeded"
   | "failed"
   | "remediation_executed"
   | "rejected_by_human";
@@ -53,7 +54,6 @@ export interface Hypothesis {
 export interface ApprovalInfo {
   required: boolean;
   approval_id?: string;
-  approval_token?: string;
   action?: {
     type: string;
     target: string;
@@ -61,6 +61,22 @@ export interface ApprovalInfo {
     parameters?: Record<string, unknown>;
   };
   reason?: string;
+}
+
+export interface EvalRunMetrics {
+  accuracy?: number;
+  accuracy_pct?: number;
+  groundedness_pass_rate?: number;
+  groundedness_pct?: number;
+  abstention_precision?: number;
+  abstention_correct_pct?: number;
+  avg_latency_ms?: number;
+  latency_p50_ms?: number;
+  avg_cost_usd?: number;
+  mean_cost_usd?: number;
+  total_runs?: number;
+  simulated?: boolean;
+  note?: string;
 }
 
 export interface GuardrailFlag {

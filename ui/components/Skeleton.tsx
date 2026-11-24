@@ -19,7 +19,7 @@ export function Skeleton({ className, ...props }: SkeletonProps) {
   );
 }
 
-export function TableRowSkeleton({ cols = 5 }: { cols?: number }) {
+export function TableRowSkeleton() {
   return (
     <div className="px-6 py-4 grid grid-cols-12 gap-3 items-center">
       <div className="col-span-3 space-y-1.5">
