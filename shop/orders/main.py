@@ -2,6 +2,7 @@ import asyncio
 import os
 import time
 import uuid
+from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -16,8 +17,8 @@ MAX_DB_POOL_SIZE = int(os.getenv("MAX_DB_POOL_SIZE", "10"))
 ACTIVE_DB_CONNECTIONS = 0
 FORCE_DB_POOL_EXHAUSTION = False
 SIMULATE_SLOW_QUERY = False
-ORDERS_CACHE = {}  # In-memory Redis simulation fallback
-ORDERS_DB = {}  # In-memory Postgres simulation fallback
+ORDERS_CACHE: dict[str, Any] = {}  # In-memory Redis simulation fallback
+ORDERS_DB: dict[str, Any] = {}  # In-memory SQLite/DB simulation fallback
 
 
 class OrderItem(BaseModel):

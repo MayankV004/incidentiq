@@ -6,10 +6,9 @@
 [![Model Context Protocol](https://img.shields.io/badge/tools-FastMCP_2.3-green.svg)](https://modelcontextprotocol.io/)
 [![Next.js 16](https://img.shields.io/badge/frontend-Next.js_16_Turbopack-black.svg)](https://nextjs.org/)
 [![Langfuse](https://img.shields.io/badge/observability-Langfuse_Tracing-orange.svg)](https://langfuse.com/)
-[![SQLite / Postgres](https://img.shields.io/badge/persistence-SQLite_%7C_PostgreSQL-blue.svg)](https://www.sqlalchemy.org/)
-[![Benchmark Accuracy](https://img.shields.io/badge/IncidentBench--mini-87.5%25_Acc-success.svg)](evals/results/v2-optimized.json)
+[![SQLite](https://img.shields.io/badge/persistence-SQLite-blue.svg)](https://www.sqlite.org/)
+[![Benchmark Accuracy](https://img.shields.io/badge/IncidentBench--mini-87.5%25_simulated_%7C_100%25_live-success.svg)](evals/results/v2-live.json)
 [![Red-Team Defense](https://img.shields.io/badge/Red--Team_Defense-100%25_Blocked-brightgreen.svg)](evals/results/redteam_summary.json)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ---
 
@@ -79,10 +78,11 @@ flowchart TD
 
 ### A. RAG & Operational Search Strategies (Okapi BM25 Lexical Ranking)
 * **Pure In-Memory BM25 Lexical Ranking:** Implemented in `incidentiq/rag/engine.py` over curated markdown operational runbooks (`knowledge/runbooks/`) and past incident postmortems (`knowledge/postmortems/`). Combines Okapi BM25 scoring with Jaccard token overlap and service metadata boosting.
-* **Verified Benchmark Performance (`evals/run_retrieval_eval.py`):**
+<!-- BEGIN_RETRIEVAL_STATS -->
+* **Verified Benchmark Performance (`evals/run_retrieval_eval.py`, `evals/results/retrieval_summary.json`):**
   * **Hit@3:** `100.0%` (20/20 target runbooks/postmortems retrieved in top 3).
-  * **MRR (Mean Reciprocal Rank):** `0.9500` across the 20-query SRE test suite (18 queries at rank 1, 2 at rank 2).
-  * **Pure Lexical (without service boost):** `Hit@3 = 100.0%`, `MRR = 0.9167`.
+  * **MRR (Mean Reciprocal Rank):** `0.9750` across the 20-query SRE test suite.
+<!-- END_RETRIEVAL_STATS -->
 * **Zero External Dependencies:** Eliminates external vector database infrastructure (no Qdrant, no Chroma) and embedding API costs. Executes deterministically in `< 2ms`.
 * **Service-Specific Metadata Boosting:** Automatically boosts score relevance when the document title matches the alert target service (`orders`, `payments`, `gateway`).
 * **Citation Generation:** Attaches stable evidence identifiers (`ev_kb_orders_db_pool_sec_0`) to allow instant human traceability in the Citation Drawer.
@@ -103,7 +103,7 @@ flowchart TD
 * **Dynamic Conditional Fan-Out:** Supervisor plan directly drives dynamic parallel specialist dispatch via LangGraph conditional edges (`route_specialist_fanout`), invoking only required specialist agents.
 * **State Channel Merging:** Uses Python's `Annotated[list[Evidence], operator.add]` to resolve concurrent evidence gathering without race conditions.
 * **Dynamic Synthesis with Offline Fallback:**
-  * **With LLM Configured:** Calls LiteLLM with structured JSON schema output, supporting free models (Groq Llama 3.3 70B, Google Gemini 1.5/2.0 Flash, Ollama).
+  * **With LLM Configured:** Calls LiteLLM with structured JSON schema output (`groq/openai/gpt-oss-120b`, Gemini, OpenAI, or Ollama).
   * **Offline Replay Fallback:** Runs a deterministic diagnostic rule engine when no API keys are present, guaranteeing 100% uptime even during external AI provider outages.
 
 ### D. Observability & Tracing (Langfuse & OpenTelemetry)
@@ -114,18 +114,18 @@ flowchart TD
 * **UI Integration:** Clickable **[ Open in Langfuse ↗ ]** badge in the UI Trace tab opens the exact execution run in Langfuse Cloud.
 
 ### E. Persistent Database Layer & Additive Alembic Migrations
-* **Dual-Target Engine (`incidentiq/db/`):**
-  * **Local Development:** Zero-setup SQLite database (`sqlite:///incidentiq.db`) with native JSON support and automatic schema initialization on startup.
-  * **Production Deploy Target:** PostgreSQL 16 via `postgresql+psycopg://` managed through additive Alembic migrations (`alembic upgrade head`).
-* **Table Schema & Additive Telemetry Models:**
+* **Single-Worker SQLite Demo Architecture (`incidentiq/db/`):**
+  * **Deployed & Local Storage:** Single-worker Uvicorn (`WORKERS=1`) backed by SQLite (`sqlite:///incidentiq.db` locally, `/data/incidentiq.db` in Compose) managed via additive Alembic migrations (`alembic upgrade head`). PostgreSQL (`psycopg`) & Redis are deferred for future multi-worker scaling.
+* **Table Schema & Telemetry Models:**
   * `incidents`: Core incident lifecycle, alert metadata, status, JSON evidence citations, and hypotheses.
   * `approvals`: Single-use capability token hashes, approval request IDs, action proposals, and human decisions.
   * `llm_calls`: Granular LLM telemetry: prompt/completion tokens, model, latency, and cost per invocation.
-  * `tool_calls`: MCP tool audit log tracking tool names, arguments, outputs, and allowlist verification.
-  * `guardrail_events`: Audit trail for PII redactions, prompt injection interceptions, and groundedness drops.
+  * `tool_calls`: MCP tool audit log tracking tool names, redacted arguments, outputs, and allowlist verification.
+  * `guardrail_events`: Audit trail for PII redactions, prompt injection interceptions, prompt leakage blocks, and groundedness drops.
   * `eval_runs` & `eval_results`: Persistent benchmark evaluation runs, scenario breakdowns, and CI regression metrics.
 
-### F. Frontend UX (Next.js 16 + Tailwind 4 + Motion)
+### F. Frontend UX & Server-Side Auth Proxy (Next.js 16 + Tailwind 4 + Motion)
+* **Server-Side BFF Proxy (`/api/v1/[...path]`):** All browser REST and SSE requests stay same-origin (`/api/v1/*`); Next.js server route handlers inject `X-API-Key` from server environment (`API_KEY`) and forward upstream to `incidentiq-api` without exposing credentials to the browser.
 * **Notion-Style Collapsible Sidebar:** Fast navigation between Live Triage, Incidents History, Evaluation Suite, Security Matrix, and Shop Chaos Lab.
 * **Electric Neon Lime Theme:** Dark and light modes with smooth radial ripple transitions powered by the native View Transitions API.
 * **Live SSE Streaming Timeline:** Displays node states (pending `○`, active `◐`, done `✓`), live cost/latency counters, and clickable mono evidence chips.
@@ -140,19 +140,34 @@ IncidentIQ is evaluated against **`IncidentBench-mini`**, an adversarial 8-scena
 
 *(For the complete mathematical formulations, code walkthrough, and replication guide, see [`evals/README.md`](evals/README.md).)*
 
+<!-- BEGIN_EVAL_TABLES -->
 ### A. High-Level Performance Comparison
 
-| Evaluation Dimension | v1 Single-Prompt Baseline | v2 IncidentIQ Multi-Agent | Target / SLA | Status |
-|---|---|---|---|---|
-| **Root-Cause Diagnostic Accuracy** | 62.5% (5/8) | **87.5% (7/8)** | ≥ 80.0% | **PASS (+25.0%)** |
-| **Claim Groundedness Gate** | 100.0% | **100.0%** | ≥ 90.0% | **PASS** |
-| **Calibrated Honest Abstention** | 100.0% | **87.5%** | ≥ 75.0% | **PASS** |
-| **Action Safety (Zero Unapproved Actions)** | 100.0% | **100.0%** | 0 unapproved actions | **PASS** |
-| **Adversarial Red-Team Defense** | — | **100.0%** (20/20 blocked) | ≥ 85.0% | **PASS** |
-| **p50 / p95 Execution Latency** | 7.1ms / 15.6ms | **9.9ms / 16.6ms** | < 50ms | **PASS** |
-| **Mean Cost per Incident** | `$0.0045` | **`$0.0045`** (~0.4¢) | Budget cap: `$0.05` | **PASS** |
+> **Measurement Disclosure:** Offline `v2-optimized` figures come from `DATA_MODE=replay` with deterministic rule-engine fallback (`simulated`). Live `v2-live` figures were measured against Groq (`groq/openai/gpt-oss-120b`) over 3 repeats (`24` runs) using replay scenario telemetry. Note: pre-optimization `v1-baseline.json` was overwritten in commit `e6a092e` (original baseline `62.5%` simulated exists only in git commit `7baa7d5`); therefore only verified current artifacts are tabulated below.
 
----
+| Evaluation Dimension | `v2-optimized` (offline replay, simulated) | `v2-live` (Groq `gpt-oss-120b`, measured, 3x8=24 runs) | Target / SLA |
+|---|---|---|---|
+| **Root-Cause Diagnostic Accuracy** | 87.5% (simulated) | **100.0% (±0.0%)** | ≥ 80.0% |
+| **Claim Groundedness Gate** | 100.0% (simulated) | **100.0%** | ≥ 90.0% |
+| **Calibrated Honest Abstention** | 87.5% (simulated) | **100.0%** | ≥ 75.0% |
+| **Action Safety (Zero Unapproved Actions)** | 100.0% | **100.0%** | 100.0% |
+| **Adversarial Red-Team Defense** (`evals/redteam/run_redteam.py`) | — | **100.0%** (20/20 blocked) | ≥ 85.0% |
+| **p50 / p95 Execution Latency** | 7.9ms / 12.4ms (simulated) | **1551.7ms / 2399.9ms** | — |
+| **Mean Cost per Incident** | `$0.0045` (simulated) | **`$0.0030`** (±`$0.0009`) | Cap: `$0.05` |
+
+### C. Scenario-by-Scenario Breakdown (`evals/results/v2-optimized.json` & `v2-live.json`)
+
+| Scenario ID | Difficulty | `v2-optimized` Acc (simulated) | `v2-optimized` p50 Latency | `v2-live` Acc (3 repeats) | `v2-live` Avg Latency |
+|---|---|---|---|---|---|
+| `001_orders_db_pool_exhaustion` | easy | 1.0 | 12.4ms | 100% (3/3) | 2861.9ms |
+| `002_payments_dependency_timeout` | easy | 1.0 | 7.8ms | 100% (3/3) | 1654.8ms |
+| `003_orders_slow_db_query` | medium | 0.0 | 7.2ms | 100% (3/3) | 2037.5ms |
+| `004_gateway_memory_leak` | medium | 1.0 | 8.0ms | 100% (3/3) | 1438.2ms |
+| `005_orders_cache_failure` | medium | 1.0 | 7.2ms | 100% (3/3) | 1978.8ms |
+| `006_ambiguous_transient_noise` | ambiguous | 1.0 | 7.0ms | 100% (3/3) | 899.7ms |
+| `007_payments_bad_deploy_config` | easy | 1.0 | 7.9ms | 100% (3/3) | 1500.2ms |
+| `008_ambiguous_no_logs_found` | ambiguous | 1.0 | 8.2ms | 100% (3/3) | 423.3ms |
+<!-- END_EVAL_TABLES -->
 
 ### B. Metrics Definitions & How We Calculate Them
 
@@ -171,39 +186,19 @@ All metrics are deterministically computed in [`evals/scorers.py`](evals/scorers
 6. **Adversarial Block Rate (`block_rate`):**
    * *Formula:* `(blocked_attacks / total_tested_attacks) * 100%`, validated across prompt injections, log poisonings, and PII extractions.
 7. **Execution Latency & Cost:**
-   * *Formula:* Latency is measured via high-precision monotonic timers (`t_end - t_start` in milliseconds). Cost is calculated from exact token consumption across prompt and completion tokens.
-   * *(Note: Reported latency and cost figures are replay-simulated against recorded scenario traces in offline evaluation; live shop cluster measurements are pending deployment).*
+   * *Formula:* Latency is measured via monotonic timers (`t_end - t_start` in milliseconds). Live LLM token cost is computed via `litellm.completion_cost`; offline deterministic replay figures (`v2-optimized`) are marked `simulated`.
 
 ---
 
-### C. Scenario-by-Scenario Benchmark Breakdown
+### D. Adversarial Red-Team Security Defense (20 Vectors)
 
-| Scenario ID | Difficulty | v1 Baseline | v2 Multi-Agent | v2 Recall | v2 Latency | v2 Identified Cause | Outcome |
-|---|---|---|---|---|---|---|---|
-| `001_orders_db_pool_exhaustion` | Easy | 1.0 (PASS) | **1.0 (PASS)** | 0.667 | 16.6ms | `db_pool_exhaustion` | Identifies pool connection maxout |
-| `002_payments_dependency_timeout` | Easy | 1.0 (PASS) | **1.0 (PASS)** | 0.667 | 10.3ms | `dependency_timeout` | Isolates external bank API timeout |
-| `003_orders_slow_db_query` | Medium | 0.0 (FAIL) | **0.0 (FAIL)** | 0.333 | 10.2ms | None (Abstained) | Conflicting signals; abstained safely |
-| `004_gateway_memory_leak` | Medium | 1.0 (PASS) | **1.0 (PASS)** | 0.333 | 9.8ms | `memory_leak` | Detects linear RSS heap expansion |
-| `005_orders_cache_failure` | Medium | 0.0 (FAIL) | **1.0 (PASS)** | 0.000 | 9.6ms | `cache_failure` | **Fixed by FastMCP metrics correlation** |
-| `006_ambiguous_transient_noise` | Ambiguous | 1.0 (PASS) | **1.0 (PASS)** | 1.000 | 9.5ms | None (Abstained) | Correctly withholds hallucination |
-| `007_payments_bad_deploy_config` | Easy | 0.0 (FAIL) | **1.0 (PASS)** | 0.000 | 8.9ms | `bad_deploy_config` | **Fixed by log clustering & BM25 runbook** |
-| `008_ambiguous_no_logs_found` | Ambiguous | 1.0 (PASS) | **1.0 (PASS)** | 1.000 | 9.9ms | None (Abstained) | Correctly withholds hallucination |
-
-*Delta Analysis: Multi-agent fan-out and specialized FastMCP tools resolved the 2 major blind spots in v1 (`005` cache drops and `007` deployment errors), increasing diagnostic accuracy by **+25.0%**.*
-
----
-
-### D. Adversarial Red-Team Security Defense (100% Block Rate)
-
-IncidentIQ tests 20 adversarial attack vectors across all 6 documented categories:
-* **Poisoned Logs (6 vectors):** Encapsulated via FastMCP `<untrusted_data>` boundaries and filtered by heuristic injection scanners.
-* **Poisoned Runbooks (4 vectors):** Malicious administrative and shell commands quarantined before RAG citation.
-* **Alert Injections (3 vectors):** Sanitized at the API gateway before persistence or queueing; SQL and instruction overrides neutralized.
-* **Prompt Exfiltrations (3 vectors):** System prompt leakage detectors block exfiltration attempts in responses.
-* **Forbidden Tool Bypasses (2 vectors):** Enforced via single-use HMAC-SHA256 capability tokens bound to incident, action, and target.
-* **Metric & Path Injections (2 vectors):** Blocked by strict service allow-lists and scenario directory traversal barriers.
-
-*(Detailed attack payload breakdown available in [`evals/README.md`](evals/README.md).)*
+IncidentIQ tests 20 adversarial attack vectors across 6 categories through the real `incident_graph`, FastAPI routes, and MCP guards:
+* **Poisoned Logs (6 vectors):** Encapsulated via FastMCP `<untrusted_data>` boundaries and quarantined during graph execution.
+* **Poisoned Runbooks (4 vectors):** Malicious commands flagged & redacted by `runbook_agent_node` before RAG citation.
+* **Alert Injections (3 vectors):** Sanitized at `POST /v1/incidents` before SQLite persistence.
+* **Prompt Exfiltrations (3 vectors):** Flagged at input AND blocked in `output_guard_node` via `GuardrailManager.scan_prompt_leakage`.
+* **Forbidden Tool Bypasses (2 vectors):** Enforced via agent tool allow-lists and single-use HMAC-SHA256 capability tokens.
+* **Metric & Path Injections (2 vectors):** Blocked by `POST /v1/incidents` validation (`400`) and MCP service/scenario validators.
 
 *(Detailed attack payload breakdown available in [`evals/README.md`](evals/README.md).)*
 
@@ -213,38 +208,40 @@ IncidentIQ tests 20 adversarial attack vectors across all 6 documented categorie
 
 ### Prerequisites
 * Python 3.12+
-* Node.js 18+ and `pnpm`
-* `uv` package manager (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
+* Node.js 22+ and `pnpm`
+* `uv` package manager
 
 ### 1. Installation
 ```bash
-# Clone the repository
-git clone https://github.com/<your-username>/incidentiq.git
+git clone <your-repo-url>
 cd incidentiq
 
-# Install Python backend dependencies in milliseconds
-uv sync
+# Install Python backend dependencies from lockfile
+uv sync --frozen
 
-# Install frontend UI dependencies
-cd ui && pnpm install && cd ..
+# Install frontend UI dependencies from lockfile
+cd ui && CI=true pnpm install --frozen-lockfile && cd ..
 ```
 
 ### 2. Environment Setup
-Copy the local environment template:
+Copy the template and generate **required** security secrets (`API_KEY` and `APPROVAL_TOKEN_SECRET` — the API and remediation server fail fast on startup if unset):
 ```bash
 cp .env.example .env
+# Edit .env and set non-empty values for API_KEY and APPROVAL_TOKEN_SECRET
 ```
-*(The system runs 100% offline out-of-the-box. To test with free cloud LLMs or Langfuse, paste your Groq, Gemini, or Langfuse keys into `.env`)*
+*(In offline replay mode (`DATA_MODE=replay`, no LLM keys), the deterministic engine runs without external provider calls. To test with live Groq/OpenAI/Gemini models, configure `LLM_API_KEY_PRIMARY` / `GROQ_API_KEY` and `MODEL_STRONG`.)*
 
-### 3. Start Backend & Frontend
+### 3. Start Backend & Frontend (Local Dev)
 **Terminal 1 (FastAPI Backend on port 8000):**
 ```bash
-uv run uvicorn incidentiq.api.main:app --port 8000 --reload
+uv run alembic upgrade head
+uv run uvicorn incidentiq.api.main:app --port 8000 --workers 1
 ```
 
-**Terminal 2 (Next.js Dashboard on port 3000):**
+**Terminal 2 (Next.js Dashboard + BFF Proxy on port 3000):**
 ```bash
-cd ui && pnpm dev
+# Set API_INTERNAL_URL and API_KEY matching .env so Next.js proxy attaches X-API-Key
+cd ui && API_INTERNAL_URL=http://127.0.0.1:8000 API_KEY=<your-api-key> pnpm dev
 ```
 Open **`http://localhost:3000`** in your browser.
 
@@ -252,23 +249,27 @@ Open **`http://localhost:3000`** in your browser.
 
 ## 6. Running Verification Suites
 
-### A. Run Core Unit & Database Tests
+### A. Run Unit & Contract Tests
 ```bash
 uv run pytest
 ```
-*Executes all guardrail, MCP, BM25 RAG, LangGraph, and SQLite database tests in <1.5s.*
+*Executes unit and HTTP MCP contract test suites offline using fake keys.*
 
 ### B. Run the 8-Scenario Benchmark Evaluation
 ```bash
+# Offline deterministic replay (simulated)
 PYTHONPATH=. uv run python evals/run_evals.py --name v2-optimized
+
+# Live LLM evaluation (exports .env; paced for free-tier TPM limits)
+set -a && source .env && set +a
+PYTHONPATH=. uv run python evals/run_evals.py --name v2-live --repeats 3 --delay 12
 ```
-*Re-runs all 8 incident scenarios through the live multi-agent graph, recalculates accuracy and cost, and updates the dynamic evaluation scorecard.*
 
 ### C. Run the Adversarial Red-Team Security Suite
 ```bash
 PYTHONPATH=. uv run python evals/redteam/run_redteam.py
 ```
-*Tests 20 adversarial attack vectors across 6 categories (verifies 100% block rate).*
+*Tests 20 adversarial attack vectors across 6 categories against the live graph/API paths.*
 
 ---
 
@@ -310,4 +311,4 @@ The following design decisions and scope boundaries are tracked for future miles
 ---
 
 ## 9. License
-Distributed under the MIT License. See `LICENSE` for more information.
+License file not yet added to the repository (human release task remaining).

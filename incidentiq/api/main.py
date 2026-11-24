@@ -292,7 +292,7 @@ def run_incident_workflow(incident_id: str, alert: Alert):
 
     scenario_id = INCIDENTS_DB[incident_id].get("scenario_id")
 
-    initial_state = {
+    initial_state: dict[str, Any] = {
         "incident_id": incident_id,
         "scenario_id": scenario_id,
         "alert": alert,

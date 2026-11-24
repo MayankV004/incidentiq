@@ -7,7 +7,7 @@ def score_run(
     label: dict[str, Any], result_state: dict[str, Any], latency_ms: float
 ) -> dict[str, Any]:
     """Computes deterministic benchmark metrics comparing agent hypothesis with ground-truth label."""
-    hypothesis: Hypothesis = result_state.get("hypothesis")
+    hypothesis: Hypothesis | None = result_state.get("hypothesis")
     should_abstain = label.get("should_abstain", False)
 
     # 1. Abstention correctness

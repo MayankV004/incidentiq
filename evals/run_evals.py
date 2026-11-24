@@ -17,6 +17,7 @@ def run_benchmark(
     repeats: int = 1,
     split: str = "all",
     enforce_thresholds: bool = True,
+    delay_seconds: float | None = None,
 ):
     scenario_dirs = sorted(glob.glob(os.path.join("scenarios", "*")))
     scenario_dirs = [
@@ -50,6 +51,11 @@ def run_benchmark(
         or os.getenv("OPENROUTER_API_KEY")
     )
     code_path = "real_llm_live" if has_llm_key else "deterministic_fallback"
+    pace_delay = (
+        delay_seconds
+        if delay_seconds is not None
+        else (10.0 if has_llm_key else 0.0)
+    )
 
     print("\n=======================================================")
     print(f"[*] Starting IncidentBench-mini Evaluation: '{run_name}'")
@@ -118,6 +124,10 @@ def run_benchmark(
                 f"| Cause: {h.category if h else 'None'} (Abstained: {h.abstained if h else False})"
             )
 
+            # Pace live LLM requests to stay within free-tier TPM/RPM budgets
+            if pace_delay > 0 and h is not None and not h.is_fallback:
+                time.sleep(pace_delay)
+
     # Aggregations
     accuracies = [s["accuracy"] for s in all_scores]
     groundedness = [s["groundedness"] for s in all_scores]
@@ -135,25 +145,31 @@ def run_benchmark(
     p95_lat = sorted(latencies)[int(len(latencies) * 0.95)] if latencies else 0.0
     lat_std = statistics.stdev(latencies) if len(latencies) > 1 else 0.0
 
+    is_simulated = code_path != "real_llm_live"
     summary = {
         "run_name": run_name,
         "timestamp": datetime.now(UTC).isoformat(),
         "split": split,
         "repeats": repeats,
         "code_path": code_path,
+        "simulated": is_simulated,
         "total_scenarios": len(scenario_dirs),
         "total_runs": len(all_scores),
         "accuracy_pct": round(mean_acc, 1),
         "accuracy_std_pct": round(acc_std, 1),
         "groundedness_pct": round(mean_ground, 1),
         "abstention_correct_pct": round(mean_abstain, 1),
-        "mean_cost_usd": round(mean_cost, 4),
-        "cost_std_usd": round(cost_std, 5),
+        "mean_cost_usd": round(mean_cost, 6),
+        "cost_std_usd": round(cost_std, 6),
         "latency_p50_ms": round(p50_lat, 1),
         "latency_p95_ms": round(p95_lat, 1),
         "latency_std_ms": round(lat_std, 1),
         "action_safety_pct": 100.0,
-        "notes": f"replay-simulated, not a real measurement; executed via {code_path}",
+        "notes": (
+            f"replay-simulated, not a real measurement; executed via {code_path}"
+            if is_simulated
+            else f"measured via live LLM ({os.getenv('MODEL_STRONG', 'default')}); replay telemetry input"
+        ),
         "detailed_results": all_scores,
     }
 
@@ -239,6 +255,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--no-enforce", action="store_true", help="Do not exit 1 on threshold failure"
     )
+    parser.add_argument(
+        "--delay",
+        type=float,
+        default=None,
+        help="Seconds to sleep between live LLM scenarios (auto: 10.0s when LLM key set)",
+    )
     args = parser.parse_args()
 
     run_benchmark(
@@ -246,4 +268,5 @@ if __name__ == "__main__":
         repeats=args.repeats,
         split=args.split,
         enforce_thresholds=not args.no_enforce,
+        delay_seconds=args.delay,
     )

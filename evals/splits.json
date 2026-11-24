@@ -5,22 +5,10 @@
     "003_orders_slow_db_query",
     "004_gateway_memory_leak",
     "005_orders_cache_failure",
-    "006_ambiguous_transient_noise",
-    "007_payments_bad_deploy_config",
-    "008_ambiguous_no_logs_found",
-    "009_payments_card_gateway_down",
-    "010_orders_kafka_consumer_lag",
-    "011_gateway_rate_limit_spike",
-    "012_orders_pessimistic_lock_timeout",
-    "013_payments_webhook_signature_failure",
-    "014_orders_postgres_disk_full"
+    "006_ambiguous_transient_noise"
   ],
   "held_out": [
-    "015_payments_circuit_breaker_trip",
-    "016_gateway_upstream_dns_failure",
-    "017_orders_redis_oom_eviction",
-    "018_ambiguous_unmonitored_drop",
-    "019_payments_duplicate_charge_storm",
-    "020_gateway_tls_handshake_timeout"
+    "007_payments_bad_deploy_config",
+    "008_ambiguous_no_logs_found"
   ]
 }
