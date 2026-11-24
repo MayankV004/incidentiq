@@ -272,7 +272,8 @@ def run_incident_workflow(incident_id: str, alert: Alert):
                         h = update.get("hypothesis")
                         if h:
                             hypothesis_dict = h.model_dump() if hasattr(h, "model_dump") else h
-                            summary = f"Diagnosis: {hypothesis_dict.get('root_cause')} (Confidence: {int(hypothesis_dict.get('confidence', 0)*100)}%)"
+                            cause_title = hypothesis_dict.get("category") or hypothesis_dict.get("root_cause")
+                            summary = f"Diagnosis: {cause_title} (Confidence: {int(hypothesis_dict.get('confidence', 0)*100)}%)"
                             event_data = {"hypothesis": hypothesis_dict}
 
                     elif node == "output_guard":
@@ -447,14 +448,15 @@ def list_incidents():
                     "cost_usd": inc.get("cost_usd", 0.0),
                     "latency_ms": inc.get("latency_ms", 0.0),
                     "created_at": inc.get("created_at"),
-                    "root_cause": inc.get("hypothesis", {}).get("root_cause") if inc.get("hypothesis") else None,
+                    "category": inc.get("hypothesis", {}).get("category") if inc.get("hypothesis") else None,
+                    "root_cause": (inc.get("hypothesis", {}).get("category") or inc.get("hypothesis", {}).get("root_cause")) if inc.get("hypothesis") else None,
                     "confidence": inc.get("hypothesis", {}).get("confidence") if inc.get("hypothesis") else None,
                     "langfuse_trace_url": inc.get("langfuse_trace_url"),
                 }
                 for inc in db_records
             ]
     except Exception as e:  # noqa: BLE001
-        logger.debug(f"Failed to query DB for list_incidents: {e}")
+        logger.error(f"Failed to query DB for list_incidents: {e}")
 
     return [
         {
@@ -465,7 +467,8 @@ def list_incidents():
             "cost_usd": inc.get("cost_usd", 0.0),
             "latency_ms": inc.get("latency_ms", 0.0),
             "created_at": inc.get("created_at"),
-            "root_cause": inc.get("hypothesis", {}).get("root_cause") if inc.get("hypothesis") else None,
+            "category": inc.get("hypothesis", {}).get("category") if inc.get("hypothesis") else None,
+            "root_cause": (inc.get("hypothesis", {}).get("category") or inc.get("hypothesis", {}).get("root_cause")) if inc.get("hypothesis") else None,
             "confidence": inc.get("hypothesis", {}).get("confidence") if inc.get("hypothesis") else None,
             "langfuse_trace_url": inc.get("langfuse_trace_url"),
         }

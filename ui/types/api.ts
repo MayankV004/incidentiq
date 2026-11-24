@@ -18,26 +18,36 @@ export interface Alert {
 
 export interface Evidence {
   id: string;
-  source: "metric" | "log" | "runbook" | "postmortem";
+  kind?: string;
+  source?: "metric" | "log" | "runbook" | "postmortem";
   summary: string;
+  source_ref?: string;
   raw_ref?: string;
   confidence?: number;
   data?: Record<string, unknown>;
 }
 
+export interface Action {
+  type: string;
+  target: string;
+  detail?: string;
+  dry_run_only?: boolean;
+  parameters?: Record<string, unknown>;
+}
+
 export interface Hypothesis {
-  root_cause: string;
+  category: string;
+  root_cause?: string;
+  service?: string;
   confidence: number;
-  groundedness_score: number;
+  groundedness_score?: number;
+  reasoning: string;
   abstained: boolean;
   abstain_reason?: string;
-  supporting_evidence_ids: string[];
-  recommended_action: {
-    type: string;
-    target: string;
-    dry_run_only?: boolean;
-    parameters?: Record<string, unknown>;
-  };
+  evidence_ids?: string[];
+  supporting_evidence_ids?: string[];
+  suggested_action?: Action | null;
+  recommended_action?: Action | null;
 }
 
 export interface ApprovalInfo {
@@ -111,6 +121,7 @@ export interface IncidentSummary {
   cost_usd: number;
   latency_ms: number;
   created_at: number;
+  category?: string;
   root_cause?: string;
   confidence?: number;
   langfuse_trace_url?: string;

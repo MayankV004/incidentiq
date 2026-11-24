@@ -32,7 +32,7 @@ export function ReportView({
   }
 
   const confidencePct = hypothesis ? Math.round(hypothesis.confidence * 100) : 87;
-  const groundednessPct = hypothesis ? Math.round(hypothesis.groundedness_score * 100) : 95;
+  const groundednessPct = hypothesis ? Math.round((hypothesis.groundedness_score ?? 1.0) * 100) : 95;
   const isAwaitingApproval = status === "awaiting_approval";
   const isExecuted = status === "remediation_executed";
   const isRejected = status === "rejected_by_human";
@@ -90,98 +90,92 @@ export function ReportView({
       {/* Tab Content */}
       {activeTab === "report" && (
         <div className="p-6 space-y-6 text-sm">
-          {/* Header Title: DB connection pool exhaustion · orders */}
+          {/* Header Title: Dynamic Category & Service */}
           <div>
-            <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 tracking-tight">
-              {hypothesis?.root_cause || "DB connection pool exhaustion · orders"}
+            <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 tracking-tight capitalize">
+              {hypothesis?.abstained
+                ? `Abstained: Inconclusive Telemetry${hypothesis?.service ? ` · ${hypothesis.service}` : ""}`
+                : `${(hypothesis?.category || hypothesis?.root_cause || "Uncertain Root Cause").replace(/_/g, " ")}${
+                    hypothesis?.service ? ` · ${hypothesis.service}` : ""
+                  }`}
             </h2>
           </div>
 
-          {/* Narrative Body with exact inline evidence chips */}
+          {/* Narrative Body with dynamic reasoning and clickable evidence chips */}
           <div className="text-zinc-700 dark:text-zinc-300 leading-relaxed space-y-3 font-sans">
             <p>
-              Errors began when <code className="text-xs font-mono font-medium text-zinc-900 dark:text-zinc-100">db_pool_in_use</code> hit max{" "}
-              {evidenceList.slice(0, 1).map((e) => (
-                <button
-                  key={e.id}
-                  onClick={() => onSelectEvidence(e)}
-                  className="inline-block px-1.5 py-0.2 mx-1 rounded text-xs font-mono bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-700 cursor-pointer hover:border-lime-500"
-                >
-                  {e.id}
-                </button>
-              ))}
-              . Logs show &quot;too many connections&quot;{" "}
-              {evidenceList.slice(1, 2).map((e) => (
-                <button
-                  key={e.id}
-                  onClick={() => onSelectEvidence(e)}
-                  className="inline-block px-1.5 py-0.2 mx-1 rounded text-xs font-mono bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-700 cursor-pointer hover:border-lime-500"
-                >
-                  {e.id}
-                </button>
-              ))}
-              . Runbook section 2 matches{" "}
-              {evidenceList.slice(2, 3).map((e) => (
-                <button
-                  key={e.id}
-                  onClick={() => onSelectEvidence(e)}
-                  className="inline-block px-1.5 py-0.2 mx-1 rounded text-xs font-mono bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-700 cursor-pointer hover:border-lime-500"
-                >
-                  {e.id}
-                </button>
-              ))}
-              .
+              {hypothesis?.abstained
+                ? hypothesis?.abstain_reason || "Telemetry is inconclusive or inconsistent with known failure models."
+                : hypothesis?.reasoning || "Investigation concluded with insufficient telemetry details."}
             </p>
+
+            {evidenceList && evidenceList.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-2">
+                <span className="text-xs text-zinc-500 font-mono">Cited evidence:</span>
+                {evidenceList.map((e) => (
+                  <button
+                    key={e.id}
+                    onClick={() => onSelectEvidence(e)}
+                    className="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-700 cursor-pointer hover:border-lime-500 transition-colors"
+                  >
+                    {e.id}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* Suggested action line: review_config → orders · increase pool size */}
-          <div className="pt-4 border-t border-zinc-200/60 dark:border-zinc-800/60 space-y-4">
-            <div className="flex items-center gap-3 text-xs font-mono">
-              <span className="text-zinc-400">Suggested action</span>
-              <span className="text-zinc-900 dark:text-zinc-100 font-semibold">
-                {hypothesis?.recommended_action?.type || "review_config"} → {hypothesis?.recommended_action?.target || "orders"} · increase pool size
-              </span>
+          {/* Suggested action line: dynamic action details */}
+          {hypothesis?.suggested_action && (
+            <div className="pt-4 border-t border-zinc-200/60 dark:border-zinc-800/60 space-y-4">
+              <div className="flex items-center gap-3 text-xs font-mono">
+                <span className="text-zinc-400">Suggested action</span>
+                <span className="text-zinc-900 dark:text-zinc-100 font-semibold">
+                  {hypothesis.suggested_action.type} → {hypothesis.suggested_action.target}
+                  {hypothesis.suggested_action.detail ? ` · ${hypothesis.suggested_action.detail}` : ""}
+                </span>
+              </div>
+
+              {/* Awaiting Approval Actions: [ Approve (dry-run) ]  [ Reject ] */}
+              {isAwaitingApproval && (
+                <div className="flex items-center gap-3 pt-2">
+                  <button
+                    onClick={onRequestApproval}
+                    className="px-5 py-2.5 rounded-lg text-xs font-semibold bg-lime-400 hover:bg-lime-300 dark:bg-lime-400 dark:hover:bg-lime-300 text-zinc-950 shadow-[0_0_16px_rgba(163,230,53,0.35)] transition-all active:scale-98 cursor-pointer"
+                  >
+                    Approve (dry-run)
+                  </button>
+                  <button
+                    onClick={onReject}
+                    className="px-4 py-2 rounded-lg text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+                  >
+                    Reject
+                  </button>
+                </div>
+              )}
+
+              {/* Executed Receipt in Mono: "Executed as dry-run. No changes made." */}
+              {isExecuted && (
+                <div className="p-4 rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 font-mono text-xs space-y-2">
+                  <div className="flex items-center gap-2 text-lime-600 dark:text-lime-400 font-semibold">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Executed as dry-run. No changes made.</span>
+                  </div>
+                  <div className="text-[11px] text-zinc-500 space-y-0.5">
+                    <div>Action: {hypothesis.suggested_action.type} ({hypothesis.suggested_action.target})</div>
+                    <div>Capability Token: Verified single-use token</div>
+                    {hypothesis.suggested_action.detail && <div>Detail: {hypothesis.suggested_action.detail}</div>}
+                  </div>
+                </div>
+              )}
+
+              {isRejected && (
+                <div className="p-3 rounded-lg bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-500">
+                  Action rejected by engineer. Incident marked resolved.
+                </div>
+              )}
             </div>
-
-            {/* Awaiting Approval Actions: [ Approve (dry-run) ]  [ Reject ] */}
-            {isAwaitingApproval && (
-              <div className="flex items-center gap-3 pt-2">
-                <button
-                  onClick={onRequestApproval}
-                  className="px-5 py-2.5 rounded-lg text-xs font-semibold bg-lime-400 hover:bg-lime-300 dark:bg-lime-400 dark:hover:bg-lime-300 text-zinc-950 shadow-[0_0_16px_rgba(163,230,53,0.35)] transition-all active:scale-98 cursor-pointer"
-                >
-                  Approve (dry-run)
-                </button>
-                <button
-                  onClick={onReject}
-                  className="px-4 py-2 rounded-lg text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
-                >
-                  Reject
-                </button>
-              </div>
-            )}
-
-            {/* Executed Receipt in Mono: "Executed as dry-run. No changes made." */}
-            {isExecuted && (
-              <div className="p-4 rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 font-mono text-xs space-y-2">
-                <div className="flex items-center gap-2 text-lime-600 dark:text-lime-400 font-semibold">
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Executed as dry-run. No changes made.</span>
-                </div>
-                <div className="text-[11px] text-zinc-500 space-y-0.5">
-                  <div>Action: {hypothesis?.recommended_action?.type || "review_config"} (orders)</div>
-                  <div>Capability Token: Verified single-use token</div>
-                  <div>Parameters: {JSON.stringify(hypothesis?.recommended_action?.parameters || { MAX_DB_POOL_SIZE: 20 })}</div>
-                </div>
-              </div>
-            )}
-
-            {isRejected && (
-              <div className="p-3 rounded-lg bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-500">
-                Action rejected by engineer. Incident marked resolved.
-              </div>
-            )}
-          </div>
+          )}
         </div>
       )}
 
