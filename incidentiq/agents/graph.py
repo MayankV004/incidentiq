@@ -25,6 +25,19 @@ def check_budget_exceeded(state: IncidentState) -> bool:
     return bool(steps >= MAX_AGENT_STEPS or cost_usd >= INCIDENT_BUDGET_USD)
 
 
+def route_specialist_fanout(state: IncidentState) -> list[str]:
+    """Dynamically fans out from supervisor to specialists driven by supervisor's plan."""
+    plan = state.get("plan", [])
+    destinations = []
+    if "metrics" in plan:
+        destinations.append("metrics_agent")
+    if "logs" in plan:
+        destinations.append("logs_agent")
+    if "runbook" in plan:
+        destinations.append("runbook_agent")
+    return destinations or ["metrics_agent", "logs_agent", "runbook_agent"]
+
+
 def route_after_output_guard(state: IncidentState) -> str:
     """Routes to budget_exceeded if limits hit, human approval if an action is proposed, otherwise report."""
     if check_budget_exceeded(state):
@@ -61,10 +74,12 @@ def build_incident_graph() -> StateGraph:
     workflow.add_edge(START, "input_guard")
     workflow.add_edge("input_guard", "supervisor")
 
-    # 3. Parallel Fan-Out from Supervisor to Specialists
-    workflow.add_edge("supervisor", "metrics_agent")
-    workflow.add_edge("supervisor", "logs_agent")
-    workflow.add_edge("supervisor", "runbook_agent")
+    # 3. Dynamic Parallel Fan-Out: Supervisor plan directly drives specialist dispatch
+    workflow.add_conditional_edges(
+        "supervisor",
+        route_specialist_fanout,
+        ["metrics_agent", "logs_agent", "runbook_agent"],
+    )
 
     # 4. Parallel Fan-In: All three specialists merge evidence into Root-Cause Agent
     workflow.add_edge("metrics_agent", "root_cause_agent")

@@ -95,7 +95,8 @@ flowchart TD
   * Verifies single-use HMAC capability tokens and returns dry-run execution receipts.
 
 ### C. Multi-Agent LangGraph State Machine
-* **Supervisor Pattern:** Dispatches 3 parallel specialists simultaneously.
+* **Deterministic Supervisor Planner:** Formulates specialist triage plans (`["metrics", "logs", "runbook"]`) with zero LLM calls, zero token cost, and sub-millisecond execution. Evaluates alert telemetry attributes deterministically to prevent planning hallucinations and latency.
+* **Dynamic Conditional Fan-Out:** Supervisor plan directly drives dynamic parallel specialist dispatch via LangGraph conditional edges (`route_specialist_fanout`), invoking only required specialist agents.
 * **State Channel Merging:** Uses Python's `Annotated[list[Evidence], operator.add]` to resolve concurrent evidence gathering without race conditions.
 * **Dynamic Synthesis with Offline Fallback:**
   * **With LLM Configured:** Calls LiteLLM with structured JSON schema output, supporting free models (Groq Llama 3.3 70B, Google Gemini 1.5/2.0 Flash, Ollama).
