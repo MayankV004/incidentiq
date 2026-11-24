@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 from starlette.responses import JSONResponse, StreamingResponse
 
 load_dotenv()
@@ -569,7 +570,7 @@ def get_incident(incident_id: str):
 async def stream_incident(incident_id: str, request: Request):
     """Server-Sent Events (SSE) stream for real-time incident investigation events."""
     if incident_id not in INCIDENTS_DB:
-        db_inc = get_incident_from_db(incident_id)
+        db_inc = await run_in_threadpool(get_incident_from_db, incident_id)
         if db_inc:
             INCIDENTS_DB[incident_id] = db_inc
         else:
