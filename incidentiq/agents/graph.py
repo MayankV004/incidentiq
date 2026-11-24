@@ -1,6 +1,7 @@
 from langgraph.graph import END, START, StateGraph
 
 from incidentiq.agents.nodes import (
+    budget_exceeded_node,
     human_approval_node,
     input_guard_node,
     logs_agent_node,
@@ -13,9 +14,22 @@ from incidentiq.agents.nodes import (
 )
 from incidentiq.agents.state import IncidentState
 
+MAX_AGENT_STEPS = 12
+INCIDENT_BUDGET_USD = 0.05
+
+
+def check_budget_exceeded(state: IncidentState) -> bool:
+    """Checks whether current incident has exhausted step or cost allocations."""
+    steps = state.get("steps", 0)
+    cost_usd = state.get("cost_usd", 0.0)
+    return bool(steps >= MAX_AGENT_STEPS or cost_usd >= INCIDENT_BUDGET_USD)
+
 
 def route_after_output_guard(state: IncidentState) -> str:
-    """Routes to human approval if an action is proposed, otherwise straight to report."""
+    """Routes to budget_exceeded if limits hit, human approval if an action is proposed, otherwise report."""
+    if check_budget_exceeded(state):
+        return "budget_exceeded"
+
     hypothesis = state.get("hypothesis")
     if (
         hypothesis
@@ -39,6 +53,7 @@ def build_incident_graph() -> StateGraph:
     workflow.add_node("runbook_agent", runbook_agent_node)
     workflow.add_node("root_cause_agent", root_cause_agent_node)
     workflow.add_node("output_guard", output_guard_node)
+    workflow.add_node("budget_exceeded", budget_exceeded_node)
     workflow.add_node("human_approval", human_approval_node)
     workflow.add_node("report", report_node)
 
@@ -62,10 +77,12 @@ def build_incident_graph() -> StateGraph:
         "output_guard",
         route_after_output_guard,
         {
+            "budget_exceeded": "budget_exceeded",
             "human_approval": "human_approval",
             "report": "report",
         },
     )
+    workflow.add_edge("budget_exceeded", "report")
     workflow.add_edge("human_approval", "report")
     workflow.add_edge("report", END)
 

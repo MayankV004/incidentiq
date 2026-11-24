@@ -166,9 +166,9 @@ def _call_llm_for_diagnosis(
     )
     model = os.getenv("MODEL_STRONG", "gpt-4o")
 
-    # If no key and not an ollama model, return None to use deterministic engine
+    # If no key and not an ollama model, return (None, None) to use deterministic engine
     if not api_key and not model.startswith("ollama/"):
-        return None
+        return None, None
 
     try:
         import litellm
@@ -483,6 +483,25 @@ def human_approval_node(state: IncidentState) -> dict[str, Any]:
     }
     return {
         "approval": approval_data,
+        "steps": 1,
+    }
+
+
+def budget_exceeded_node(state: IncidentState) -> dict[str, Any]:
+    """Triggered when step or cost budget is exhausted."""
+    steps = state.get("steps", 0)
+    cost_usd = state.get("cost_usd", 0.0)
+    reason = f"Investigation budget exceeded: steps={steps}/12, cost=${cost_usd:.4f}/$0.05"
+    logger.warning(reason)
+
+    hypothesis = state.get("hypothesis")
+    if hypothesis:
+        hypothesis.abstained = True
+        hypothesis.abstain_reason = f"Budget exceeded ({reason}). Abstaining from action."
+        hypothesis.suggested_action = None
+
+    return {
+        "guardrail_flags": ["BUDGET_EXCEEDED"],
         "steps": 1,
     }
 

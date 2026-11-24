@@ -327,7 +327,9 @@ def run_incident_workflow(incident_id: str, alert: Alert):
         latency_ms = (time.perf_counter() - t_start) * 1000
 
         # Determine terminal status
-        if approval_dict:
+        if "BUDGET_EXCEEDED" in flags:
+            status = "budget_exceeded"
+        elif approval_dict:
             status = "awaiting_approval"
         elif hypothesis_dict and hypothesis_dict.get("abstained"):
             status = "abstained"
