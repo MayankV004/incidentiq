@@ -41,6 +41,7 @@ flowchart TD
 
 Every microservice uses standard structured logging (`structlog`) and Prometheus client instrumentation:
 
+* **Non-Blocking Asynchronous Logging:** Implemented with Python's standard `logging.handlers.QueueHandler` and a background `QueueListener` worker thread, ensuring file disk writes never block FastAPI's async event loop.
 * **Prometheus Metrics:**
   * `shop_requests_total`: Request counter partitioned by `service`, `method`, `endpoint`, and `status`.
   * `shop_request_duration_seconds`: Histogram measuring latency buckets ($10\text{ms}$ to $10\text{s}$).

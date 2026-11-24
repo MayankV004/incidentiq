@@ -287,3 +287,22 @@ To add a new incident scenario to `IncidentBench-mini`:
    ```
 4. Provide `metrics.json` and `logs.jsonl` matching the failure mode.
 5. Re-run `evals/run_evals.py` to evaluate your agents against the expanded benchmark.
+
+---
+
+## 7. Held-Out Splits & Multi-Repeat Variance (`evals/splits.json`)
+
+To prevent overfitting to development scenarios, IncidentIQ partitions evaluation scenarios into development and held-out evaluation splits:
+* **Development Split (`dev`):** 14 scenarios used for iterative agent tuning and CI regression gating.
+* **Held-Out Split (`held_out`):** 6 scenarios reserved for unbiased generalization testing.
+
+### Running with Splits and Repeats
+```bash
+# Run against the development split
+PYTHONPATH=. uv run python evals/run_evals.py --split dev
+
+# Run 3 repetitions with standard deviation reporting
+PYTHONPATH=. uv run python evals/run_evals.py --split all --repeats 3
+```
+
+The runner calculates sample standard deviations (`accuracy_std_pct`, `latency_std_ms`, `cost_std_usd`) and explicitly logs the evaluated execution path (`deterministic_fallback` vs `real_llm_live`).

@@ -33,6 +33,17 @@ IncidentIQ avoids heavy vector database infrastructure and vector embedding API 
 
 ---
 
+## 3. Retrieval Benchmark & Evaluation (`evals/run_retrieval_eval.py`)
+
+IncidentIQ evaluates runbook retrieval accuracy against a 20-query benchmark (`evals/retrieval_queries.json`) covering real-world SRE alert symptoms, stack trace snippets, and past incident postmortems:
+
+* **Hit@3:** `100.0%` (20/20 target operational runbooks and postmortems retrieved in top 3).
+* **MRR (Mean Reciprocal Rank):** `0.9500` across all evaluated queries (18 queries at rank 1, 2 at rank 2).
+* **Pure Lexical Search (without service boosting):** `Hit@3 = 100.0%`, `MRR = 0.9167`.
+* **Zero External Dependencies:** Eliminates external vector database infrastructure (no Qdrant, no Chroma). Runs locally in `< 2ms`.
+
+---
+
 ## 3. Runbook Structure & Grounded Citations
 
 Every runbook follows a strict structure:

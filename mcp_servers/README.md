@@ -80,11 +80,26 @@ Enforces cryptographic human-in-the-loop authorization for all mutating actions.
 ### Exposed Tools
 * `restart_service(service: str, token: str) -> dict[str, Any]`
   * Simulates container restart.
-  * **Strict Prerequisite:** Requires a valid single-use token starting with `appr_` (e.g., `appr_4b92f01a8e23`).
+  * **Strict Prerequisite:** Requires a valid single-use cryptographic HMAC-SHA256 capability token bound to the incident ID, action, and target service, signed by the server's `APPROVAL_TOKEN_SECRET` with a 15-minute TTL.
   * Executes in dry-run mode, returning a signed receipt without modifying production infrastructure.
 * `rollback_deploy(service: str, target_version: str, token: str) -> dict[str, Any]`
   * Simulates deployment rollback to a designated commit SHA or image tag.
-  * Requires valid authorization token verification.
+  * Requires valid cryptographic capability token verification with single-use replay protection.
+* `review_config(service: str, parameter: str, proposed_value: str, token: str) -> dict[str, Any]`
+  * Simulates configuration review and tuning (e.g. connection pool limits, timeout thresholds).
+  * Enforces cryptographic capability token authorization.
+
+---
+
+## Transport Protocols & Client Integration
+
+* **Streamable HTTP Transport (`/mcp`):** Each MCP server implements `server.streamable_http_app()` running on designated microservice ports:
+  * `mcp-metrics`: Port `9101`
+  * `mcp-logs`: Port `9102`
+  * `mcp-remediation`: Port `9103`
+* **Unified Client Wrapper (`incidentiq/agents/mcp_client.py`):**
+  * Seamlessly supports both out-of-process HTTP MCP calls via `mcp.client.streamable_http.streamable_http_client` and in-process direct calls for offline deterministic benchmarking.
+  * Enforces unified tool allow-lists in front of both invocation modes to prevent tool authorization bypass.
 
 ---
 

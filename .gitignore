@@ -17,6 +17,11 @@ ENV/
 .ruff_cache/
 .coverage
 htmlcov/
+evals/results/test-*.json
+
+# Runtime logs
+logs/
+*.log
 
 # IDE files
 .vscode/
