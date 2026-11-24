@@ -1,14 +1,12 @@
-import os
+import contextlib
 from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 
-from incidentiq.security.tokens import get_approval_secret, verify_capability_token
+from incidentiq.security.tokens import require_approval_secret, verify_capability_token
 from mcp_servers.validation import ALLOWED_SERVICES, validate_service
 
 server = MCPServer("remediation_server")
-
-APPROVAL_TOKEN_SECRET = os.getenv("APPROVAL_TOKEN_SECRET", get_approval_secret())
 
 
 def verify_approval_token(
@@ -160,6 +158,19 @@ def review_config(
 
 app = server.streamable_http_app()
 
+_orig_lifespan = app.router.lifespan_context
+
+
+@contextlib.asynccontextmanager
+async def _fail_fast_lifespan(starlette_app):
+    require_approval_secret()
+    async with _orig_lifespan(starlette_app) as state:
+        yield state
+
+
+app.router.lifespan_context = _fail_fast_lifespan
+
 
 if __name__ == "__main__":
+    require_approval_secret()
     server.run()

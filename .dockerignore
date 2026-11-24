@@ -1,0 +1,15 @@
+.env*
+*.db
+*.db-*
+.venv
+.git
+node_modules
+.next
+logs
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.mypy_cache
+reports
+.DS_Store

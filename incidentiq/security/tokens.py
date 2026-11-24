@@ -7,9 +7,6 @@ import time
 import uuid
 from typing import Any
 
-# Default secret for development, configurable via environment
-DEFAULT_APPROVAL_SECRET = "incidentiq_capability_secret_2026"
-
 # Server-side ephemeral capability token store mapping approval_id -> raw_token
 # This ensures raw capability tokens remain strictly server-side and never cross network boundaries
 _SERVER_APPROVAL_TOKENS: dict[str, str] = {}
@@ -20,7 +17,17 @@ _CONSUMED_TOKEN_HASHES: set[str] = set()
 
 def get_approval_secret() -> str:
     """Retrieves the HMAC secret from environment. Returns empty string if not configured."""
-    return os.getenv("APPROVAL_TOKEN_SECRET", DEFAULT_APPROVAL_SECRET)
+    return os.getenv("APPROVAL_TOKEN_SECRET", "").strip()
+
+
+def require_approval_secret() -> str:
+    """Requires APPROVAL_TOKEN_SECRET to be set and non-empty, failing fast otherwise."""
+    secret = get_approval_secret()
+    if not secret:
+        raise RuntimeError(
+            "APPROVAL_TOKEN_SECRET environment variable must be set and non-empty."
+        )
+    return secret
 
 
 def hash_token(token: str) -> str:

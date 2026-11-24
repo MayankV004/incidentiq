@@ -111,3 +111,21 @@ def test_docker_compose_cli_validation():
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     assert result.returncode == 0, f"docker compose config failed: {result.stderr}"
+
+
+def test_dockerignore_excludes_secrets_and_artifacts():
+    """BLOCKER-2: Root and UI .dockerignore must exclude sensitive and heavy files."""
+    repo_root = Path(__file__).parents[2]
+    root_di = repo_root / ".dockerignore"
+    ui_di = repo_root / "ui" / ".dockerignore"
+
+    assert root_di.exists(), "Root .dockerignore must exist"
+    assert ui_di.exists(), "ui/.dockerignore must exist"
+
+    root_lines = {line.strip() for line in root_di.read_text().splitlines() if line.strip()}
+    for required in (".env*", "*.db", ".venv", ".git", "node_modules", ".next", "logs"):
+        assert required in root_lines, f"Missing '{required}' in root .dockerignore"
+
+    ui_lines = {line.strip() for line in ui_di.read_text().splitlines() if line.strip()}
+    for required in (".env*", "node_modules", ".next"):
+        assert required in ui_lines, f"Missing '{required}' in ui/.dockerignore"

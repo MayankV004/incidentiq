@@ -7,7 +7,6 @@ from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
-DEFAULT_API_KEY = "dev_local_secret_key"
 DAILY_COST_CAP_USD_DEFAULT = 2.00
 
 # Rate limits: (max_requests, window_seconds)
@@ -23,7 +22,15 @@ def reset_rate_limits_for_testing() -> None:
 
 
 def get_api_key() -> str:
-    return os.getenv("API_KEY", DEFAULT_API_KEY)
+    return os.getenv("API_KEY", "").strip()
+
+
+def require_api_key() -> str:
+    """Requires API_KEY to be set and non-empty, failing fast otherwise."""
+    key = get_api_key()
+    if not key:
+        raise RuntimeError("API_KEY environment variable must be set and non-empty.")
+    return key
 
 
 def get_daily_cost_cap() -> float:
@@ -70,7 +77,11 @@ class SecurityAndRateLimitMiddleware(BaseHTTPMiddleware):
         expected_key = get_api_key()
         provided_key = request.headers.get("X-API-Key")
 
-        if not provided_key or not hmac.compare_digest(provided_key, expected_key):
+        if (
+            not expected_key
+            or not provided_key
+            or not hmac.compare_digest(provided_key, expected_key)
+        ):
             return JSONResponse(
                 status_code=401,
                 content={

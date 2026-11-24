@@ -164,3 +164,29 @@ def test_approval_conflict_returns_409_and_standard_error_shape():
 
     # Clean up
     INCIDENTS_DB.pop(mock_id, None)
+
+
+def test_missing_secrets_fail_fast_at_startup(monkeypatch):
+    """BLOCKER-2: API and remediation server must have no default secret fallbacks and fail fast if unset."""
+    import pytest
+
+    import incidentiq.api.security as api_sec
+    import incidentiq.security.tokens as sec_tokens
+    from mcp_servers.remediation.server import app as remediation_app
+
+    assert not hasattr(api_sec, "DEFAULT_API_KEY")
+    assert not hasattr(sec_tokens, "DEFAULT_APPROVAL_SECRET")
+
+    monkeypatch.delenv("API_KEY", raising=False)
+    monkeypatch.delenv("APPROVAL_TOKEN_SECRET", raising=False)
+
+    with pytest.raises(RuntimeError), TestClient(app):
+        pass
+
+    monkeypatch.setenv("API_KEY", "fake_test_key")
+    with pytest.raises(RuntimeError), TestClient(app):
+        pass
+
+    with pytest.raises(RuntimeError), TestClient(remediation_app):
+        pass
+

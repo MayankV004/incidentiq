@@ -28,7 +28,11 @@ from incidentiq.agents.mcp_client import (
     rollback_deploy,
     scale_up,
 )
-from incidentiq.api.security import SecurityAndRateLimitMiddleware, get_daily_cost_cap
+from incidentiq.api.security import (
+    SecurityAndRateLimitMiddleware,
+    get_daily_cost_cap,
+    require_api_key,
+)
 from incidentiq.db import init_db
 from incidentiq.db.cache import IncidentLRUCache, check_single_worker
 from incidentiq.db.repository import (
@@ -42,6 +46,7 @@ from incidentiq.schemas.models import Alert
 from incidentiq.security.tokens import (
     consume_server_approval_token,
     generate_capability_token,
+    require_approval_secret,
 )
 
 # Initialize database schema on startup
@@ -50,6 +55,9 @@ init_db()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Fail fast if mandatory security secrets are unset
+    require_api_key()
+    require_approval_secret()
     # Enforce single worker mode for memory/SSE safety
     check_single_worker()
     # Pre-warm active and awaiting_approval incidents from database into memory
