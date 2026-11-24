@@ -1,6 +1,11 @@
+import atexit
+import json
+import logging
 import os
+import queue
 import time
 import uuid
+from logging.handlers import QueueHandler, QueueListener
 
 import psutil
 import structlog
@@ -54,20 +59,42 @@ CACHE_HIT_RATE = Gauge(
 )
 
 
-def configure_logging(service_name: str) -> structlog.BoundLogger:
-    """Configures structured JSON logging writing to console and persistent log file."""
+_LOG_QUEUE: queue.Queue = queue.Queue()
+_QUEUE_LISTENER: QueueListener | None = None
+
+
+def _get_queue_logger(service_name: str) -> logging.Logger:
+    global _QUEUE_LISTENER
     os.makedirs("logs", exist_ok=True)
     log_file_path = f"logs/{service_name}.log"
     shared_log_path = "logs/shop.log"
 
+    h_service = logging.FileHandler(log_file_path)
+    h_shared = logging.FileHandler(shared_log_path)
+    fmt = logging.Formatter("%(message)s")
+    h_service.setFormatter(fmt)
+    h_shared.setFormatter(fmt)
+
+    if _QUEUE_LISTENER is None:
+        _QUEUE_LISTENER = QueueListener(_LOG_QUEUE, h_service, h_shared, respect_handler_level=True)
+        _QUEUE_LISTENER.start()
+        atexit.register(_QUEUE_LISTENER.stop)
+
+    logger = logging.getLogger(f"shop.{service_name}")
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    if not logger.handlers:
+        logger.addHandler(QueueHandler(_LOG_QUEUE))
+    return logger
+
+
+def configure_logging(service_name: str) -> structlog.BoundLogger:
+    """Configures non-blocking structured JSON logging writing via a background QueueListener."""
+    bg_logger = _get_queue_logger(service_name)
+
     def file_output_processor(logger, method_name, event_dict):
-        # Format as strict JSON line
-        import json
-        line = json.dumps(event_dict) + "\n"
-        with open(log_file_path, "a") as f:
-            f.write(line)
-        with open(shared_log_path, "a") as f:
-            f.write(line)
+        line = json.dumps(event_dict)
+        bg_logger.info(line)
         return event_dict
 
     structlog.configure(
