@@ -1,3 +1,6 @@
+import json
+import logging
+import os
 import uuid
 from typing import Any
 
@@ -7,6 +10,8 @@ from incidentiq.rag.engine import get_rag_engine
 from incidentiq.schemas.models import Action, Evidence, Hypothesis
 from mcp_servers.logs.server import get_error_clusters, search_logs
 from mcp_servers.metrics.server import detect_anomaly, query_metric
+
+logger = logging.getLogger("incidentiq.agents")
 
 
 def input_guard_node(state: IncidentState) -> dict[str, Any]:
@@ -141,6 +146,115 @@ def runbook_agent_node(state: IncidentState) -> dict[str, Any]:
     }
 
 
+def _call_llm_for_diagnosis(
+    alert: Any,
+    telemetry_evidence: list[Evidence],
+    kb_evidence: list[Evidence],
+) -> Hypothesis | None:
+    """Invokes LiteLLM for dynamic root cause diagnosis when an LLM is configured."""
+    api_key = (
+        os.getenv("LLM_API_KEY_PRIMARY")
+        or os.getenv("GROQ_API_KEY")
+        or os.getenv("GEMINI_API_KEY")
+        or os.getenv("OPENAI_API_KEY")
+        or os.getenv("OPENROUTER_API_KEY")
+    )
+    model = os.getenv("MODEL_STRONG", "gpt-4o")
+
+    # If no key and not an ollama model, return None to use deterministic engine
+    if not api_key and not model.startswith("ollama/"):
+        return None
+
+    try:
+        from litellm import completion
+
+        telemetry_prompt = "\n".join(
+            [f"- [{e.id}] ({e.kind}): {e.summary}" for e in telemetry_evidence]
+        )
+        kb_prompt = "\n".join(
+            [f"- [{e.id}] ({e.kind}): {e.summary}" for e in kb_evidence]
+        )
+
+        system_prompt = (
+            "You are the Root Cause Synthesis Agent for IncidentIQ, an autonomous on-call SRE copilot. "
+            "You are given alert details, telemetry anomalies (metrics & logs), and runbook context. "
+            "Your job is to diagnose the root cause, assign a calibrated confidence score (0.00 - 1.00), "
+            "cite all supporting evidence IDs, and propose a safe remediation action.\n\n"
+            "CRITICAL RULES:\n"
+            "1. ONLY cite evidence IDs that are explicitly provided in the evidence lists.\n"
+            "2. If telemetry is normal, contradictory, or insufficient, set abstained=true and explain why in abstain_reason.\n"
+            "3. If confidence is below 0.50, abstained MUST be true.\n"
+            "4. Respond with valid JSON matching this schema:\n"
+            "{\n"
+            '  "category": "db_pool_exhaustion" | "bad_deploy_config" | "cache_failure" | "dependency_timeout" | "slow_db_query" | "memory_leak" | null,\n'
+            '  "service": "<service_name>" | null,\n'
+            '  "confidence": <float 0.0 to 1.0>,\n'
+            '  "reasoning": "<concise diagnostic narrative citing evidence IDs>",\n'
+            '  "evidence_ids": ["ev_metric_001", "ev_log_004"],\n'
+            '  "suggested_action": {"type": "review_config" | "restart_service" | "rollback_deploy" | "none", "target": "<service>", "detail": "<details>"} | null,\n'
+            '  "abstained": false | true,\n'
+            '  "abstain_reason": null | "<reason for abstaining>"\n'
+            "}"
+        )
+
+        user_prompt = (
+            f"Alert Service: {alert.service}\n"
+            f"Alert Symptom: {alert.symptom}\n\n"
+            f"Telemetry Evidence:\n{telemetry_prompt}\n\n"
+            f"Runbook & Postmortem Context:\n{kb_prompt}\n"
+        )
+
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": 0.1,
+            "timeout": 15,
+        }
+        if api_key:
+            kwargs["api_key"] = api_key
+
+        if any(prov in model for prov in ["gpt", "groq", "gemini", "claude"]):
+            kwargs["response_format"] = {"type": "json_object"}
+
+        response = completion(**kwargs)
+        content = response.choices[0].message.content.strip()
+
+        if content.startswith("```"):
+            lines = content.split("\n")
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].startswith("```"):
+                lines = lines[:-1]
+            content = "\n".join(lines).strip()
+
+        data = json.loads(content)
+        action_data = data.get("suggested_action")
+        suggested_action = (
+            Action(**action_data)
+            if action_data and action_data.get("type") and action_data.get("type") != "none"
+            else None
+        )
+
+        return Hypothesis(
+            category=data.get("category"),
+            service=data.get("service"),
+            confidence=float(data.get("confidence", 0.5)),
+            reasoning=data.get("reasoning", ""),
+            evidence_ids=data.get("evidence_ids", [e.id for e in telemetry_evidence]),
+            suggested_action=suggested_action,
+            abstained=bool(data.get("abstained", False)),
+            abstain_reason=data.get("abstain_reason"),
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning(
+            f"LLM diagnosis failed or unconfigured, falling back to deterministic engine: {e}"
+        )
+        return None
+
+
 def root_cause_agent_node(state: IncidentState) -> dict[str, Any]:
     """Root-Cause Synthesis Agent: Reasons across metrics, logs, and playbooks to diagnose the issue."""
     all_evidence = state.get("evidence", [])
@@ -168,7 +282,20 @@ def root_cause_agent_node(state: IncidentState) -> dict[str, Any]:
             "steps": 1,
         }
 
-    # Synthesize findings across telemetry
+    # 1. Try LLM synthesis if API key is configured
+    llm_hypothesis = _call_llm_for_diagnosis(
+        alert=state["alert"],
+        telemetry_evidence=telemetry_evidence,
+        kb_evidence=kb_evidence,
+    )
+    if llm_hypothesis is not None:
+        return {
+            "hypothesis": llm_hypothesis,
+            "cost_usd": 0.003,
+            "steps": 1,
+        }
+
+    # 2. Deterministic Rule Engine Fallback (Zero-Dependency Offline Replay)
     telemetry_text = "\n".join([f"[{e.id}] ({e.kind}): {e.summary}" for e in telemetry_evidence])
     evidence_ids = [e.id for e in all_evidence]
 
