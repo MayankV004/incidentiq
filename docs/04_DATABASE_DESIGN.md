@@ -1,24 +1,36 @@
 # Database Design: IncidentIQ
 
-PostgreSQL 16 with the `pgvector` extension. One database for app data and vectors. Migrations with Alembic.
+IncidentIQ supports a dual-engine architecture:
+1. **Local Development Target:** Lightweight, zero-dependency SQLite (`sqlite:///incidentiq.db`) with native JSON column support for instant developer onboarding and offline benchmark evaluation.
+2. **Production Deploy Target:** PostgreSQL 16 (via `postgresql+psycopg://`) managed through additive Alembic migrations (`alembic upgrade head`).
 
-## 1. ER diagram
+Migrations are strictly additive (no disruptive drops) to ensure backwards-compatibility and safe production zero-downtime rollouts.
+
+## 1. Implemented Database Architecture & ER Diagram
+
+The database manages both the core incident lifecycle and detailed telemetry/eval records:
 
 ```mermaid
 erDiagram
-  incidents ||--o{ agent_runs : has
-  incidents ||--o{ evidence : collects
-  incidents ||--o| hypotheses : concludes
   incidents ||--o{ approvals : requires
   incidents ||--o{ guardrail_events : triggers
-  agent_runs ||--o{ llm_calls : makes
-  agent_runs ||--o{ tool_calls : makes
-  kb_documents ||--o{ kb_chunks : splits_into
-  eval_runs ||--o{ eval_results : contains
-  eval_results }o--|| scenarios : scores
-  redteam_runs ||--o{ redteam_results : contains
-  redteam_results }o--|| redteam_cases : tests
+  incidents ||--o{ llm_calls : tracks
+  incidents ||--o{ tool_calls : audits
+  eval_runs ||--o{ eval_results : aggregates
 ```
+
+### Table Inventory (Implemented in Code & Alembic Migrations)
+
+| Table Name | Target Dialects | Primary Key | Purpose |
+|---|---|---|---|
+| `incidents` | SQLite & Postgres | `id` (VARCHAR 64) | Core incident lifecycle, alert metadata, status, JSON evidence, hypotheses, and execution timeline |
+| `approvals` | SQLite & Postgres | `id` (VARCHAR 36 UUID) | Cryptographic capability token nonces, approval request IDs, action proposals, and human decisions |
+| `guardrail_events` | SQLite & Postgres | `id` (VARCHAR 36 UUID) | Audit trail of PII redactions, prompt injection interceptions, and groundedness drop flags |
+| `llm_calls` | SQLite & Postgres | `id` (VARCHAR 36 UUID) | Granular model call telemetry: model name, purpose, token usage, cost, and latency |
+| `tool_calls` | SQLite & Postgres | `id` (VARCHAR 36 UUID) | MCP tool audit log: server name, tool name, arguments, output, allowlist verification status |
+| `eval_runs` | SQLite & Postgres | `id` (VARCHAR 36 UUID) | IncidentBench evaluation run summary metrics (accuracy, cost, latency, split, repeats) |
+| `eval_results` | SQLite & Postgres | `id` (VARCHAR 36 UUID) | Per-scenario evaluation scores and hypothesis outcomes within an evaluation run |
+
 
 ## 2. Schema (DDL)
 

@@ -108,11 +108,17 @@ flowchart TD
 * **LiteLLM Native Spans:** Generates token count graphs, latency waterfalls, and exact prompt/completion logs.
 * **UI Integration:** Clickable **[ Open in Langfuse ↗ ]** badge in the UI Trace tab opens the exact execution run in Langfuse Cloud.
 
-### E. Persistent Database Layer
-* **SQLAlchemy ORM (`incidentiq/db/`):**
-  * **Default (Zero Setup):** SQLite database (`sqlite:///incidentiq.db`) with automatic table creation at startup.
-  * **Production Ready:** Seamlessly connects to PostgreSQL (`postgresql://...`) via `DATABASE_URL` in `.env`.
-* **Permanent Incident History:** Persists alerts, live timeline events, collected evidence citations, diagnoses, and human approval status across server restarts.
+### E. Persistent Database Layer & Additive Alembic Migrations
+* **Dual-Target Engine (`incidentiq/db/`):**
+  * **Local Development:** Zero-setup SQLite database (`sqlite:///incidentiq.db`) with native JSON support and automatic schema initialization on startup.
+  * **Production Deploy Target:** PostgreSQL 16 via `postgresql+psycopg://` managed through additive Alembic migrations (`alembic upgrade head`).
+* **Table Schema & Additive Telemetry Models:**
+  * `incidents`: Core incident lifecycle, alert metadata, status, JSON evidence citations, and hypotheses.
+  * `approvals`: Single-use capability token hashes, approval request IDs, action proposals, and human decisions.
+  * `llm_calls`: Granular LLM telemetry: prompt/completion tokens, model, latency, and cost per invocation.
+  * `tool_calls`: MCP tool audit log tracking tool names, arguments, outputs, and allowlist verification.
+  * `guardrail_events`: Audit trail for PII redactions, prompt injection interceptions, and groundedness drops.
+  * `eval_runs` & `eval_results`: Persistent benchmark evaluation runs, scenario breakdowns, and CI regression metrics.
 
 ### F. Frontend UX (Next.js 16 + Tailwind 4 + Motion)
 * **Notion-Style Collapsible Sidebar:** Fast navigation between Live Triage, Incidents History, Evaluation Suite, Security Matrix, and Shop Chaos Lab.
