@@ -3,6 +3,10 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    environment:
+      - DEMO_DOMAIN=${DEMO_DOMAIN:-localhost}
+      - METRICS_BASIC_AUTH_USER=${METRICS_BASIC_AUTH_USER:-admin}
+      - METRICS_BASIC_AUTH_HASH=${METRICS_BASIC_AUTH_HASH:-$2a$14$000000000000000000000u0000000000000000000000000000000}
     ports:
       - "80:80"
       - "443:443"
@@ -190,6 +194,7 @@ services:
       - GROUND_THRESHOLD=${GROUND_THRESHOLD:-0.85}
       - LLM_API_KEY_PRIMARY=${LLM_API_KEY_PRIMARY:-}
       - MODEL_STRONG=${MODEL_STRONG:-}
+      - TRUSTED_PROXY_IPS=${TRUSTED_PROXY_IPS:-127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
     volumes:
       - iiq_data:/data
     expose:

@@ -1,25 +1,54 @@
-:80 {
-    encode gzip
+{$DEMO_DOMAIN:localhost} {
+	encode gzip
 
-    # Control Plane API routes
-    handle /v1/* {
-        reverse_proxy incidentiq-api:8000
-    }
+	request_body {
+		max_size 64KB
+	}
 
-    handle /healthz {
-        reverse_proxy incidentiq-api:8000
-    }
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
 
-    handle /readyz {
-        reverse_proxy incidentiq-api:8000
-    }
+	@protected path /metrics /metrics/* /admin /admin/*
+	handle @protected {
+		basic_auth {
+			{$METRICS_BASIC_AUTH_USER:admin} {$METRICS_BASIC_AUTH_HASH:$2a$14$000000000000000000000u0000000000000000000000000000000}
+		}
+		reverse_proxy incidentiq-api:8000
+	}
 
-    handle /metrics {
-        reverse_proxy incidentiq-api:8000
-    }
+	handle /v1/incidents/*/stream {
+		reverse_proxy incidentiq-api:8000 {
+			flush_interval -1
+		}
+	}
 
-    # Next.js Frontend UI
-    handle {
-        reverse_proxy ui:3000
-    }
+	handle /api/v1/incidents/*/stream {
+		reverse_proxy ui:3000 {
+			flush_interval -1
+		}
+	}
+
+	# Control Plane API routes
+	handle /v1/* {
+		reverse_proxy incidentiq-api:8000
+	}
+
+	handle /healthz {
+		reverse_proxy incidentiq-api:8000
+	}
+
+	handle /readyz {
+		reverse_proxy incidentiq-api:8000
+	}
+
+	# Next.js Frontend UI
+	handle {
+		reverse_proxy ui:3000
+	}
 }

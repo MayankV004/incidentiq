@@ -129,3 +129,19 @@ def test_dockerignore_excludes_secrets_and_artifacts():
     ui_lines = {line.strip() for line in ui_di.read_text().splitlines() if line.strip()}
     for required in (".env*", "node_modules", ".next"):
         assert required in ui_lines, f"Missing '{required}' in ui/.dockerignore"
+
+
+def test_caddyfile_hardening_and_sse():
+    """BLOCKER-5: Caddyfile must enforce HTTPS via domain env, security headers, size limit, auth, and SSE flush."""
+    repo_root = Path(__file__).parents[2]
+    caddyfile = (repo_root / "deploy" / "Caddyfile").read_text()
+
+    assert ":80 {" not in caddyfile, "Caddyfile must not bind bare :80 HTTP-only"
+    assert "DEMO_DOMAIN" in caddyfile, "Caddyfile must configure domain from DEMO_DOMAIN env"
+    assert "Strict-Transport-Security" in caddyfile
+    assert "X-Content-Type-Options" in caddyfile
+    assert "X-Frame-Options" in caddyfile
+    assert "request_body" in caddyfile and "max_size" in caddyfile
+    assert "basic_auth" in caddyfile or "basicauth" in caddyfile
+    assert "/metrics" in caddyfile and "/admin" in caddyfile
+    assert "flush_interval -1" in caddyfile

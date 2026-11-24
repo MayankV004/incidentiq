@@ -1,4 +1,5 @@
 import hmac
+import ipaddress
 import os
 import time
 from collections import defaultdict
@@ -38,6 +39,47 @@ def get_daily_cost_cap() -> float:
         return float(os.getenv("DAILY_COST_CAP_USD", str(DAILY_COST_CAP_USD_DEFAULT)))
     except ValueError:
         return DAILY_COST_CAP_USD_DEFAULT
+
+
+DEFAULT_TRUSTED_PROXIES = "127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+
+
+def _is_trusted_proxy(ip_str: str, trusted_spec: str) -> bool:
+    try:
+        addr = ipaddress.ip_address(ip_str.strip())
+    except ValueError:
+        return False
+    for raw_entry in trusted_spec.split(","):
+        entry = raw_entry.strip()
+        if not entry:
+            continue
+        try:
+            if "/" in entry:
+                if addr in ipaddress.ip_network(entry, strict=False):
+                    return True
+            elif addr == ipaddress.ip_address(entry):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def extract_client_ip(request: Request) -> str:
+    """Extracts real client IP, trusting X-Forwarded-For only from configured proxy CIDRs."""
+    peer_ip = request.client.host if request.client else "unknown"
+    trusted_spec = os.getenv("TRUSTED_PROXY_IPS", DEFAULT_TRUSTED_PROXIES)
+    if not _is_trusted_proxy(peer_ip, trusted_spec):
+        return peer_ip
+
+    xff = request.headers.get("X-Forwarded-For") or request.headers.get("x-forwarded-for")
+    if not xff:
+        return peer_ip
+
+    hops = [h.strip() for h in xff.split(",") if h.strip()]
+    for hop in reversed(hops):
+        if not _is_trusted_proxy(hop, trusted_spec):
+            return hop
+    return hops[0] if hops else peer_ip
 
 
 def is_rate_limited(client_ip: str, limit: int, window: int, key_prefix: str) -> bool:
@@ -93,7 +135,7 @@ class SecurityAndRateLimitMiddleware(BaseHTTPMiddleware):
                 },
             )
 
-        client_ip = request.client.host if request.client else "unknown"
+        client_ip = extract_client_ip(request)
 
         # 3. Rate Limiting
         if method == "POST" and path == "/v1/incidents":

@@ -190,3 +190,33 @@ def test_missing_secrets_fail_fast_at_startup(monkeypatch):
     with pytest.raises(RuntimeError), TestClient(remediation_app):
         pass
 
+
+def test_extract_client_ip_trusts_only_configured_proxies(monkeypatch):
+    """BLOCKER-5: Trust X-Forwarded-For only from trusted proxy IPs, resisting client spoofing."""
+    from starlette.requests import Request
+
+    from incidentiq.api.security import extract_client_ip
+
+    monkeypatch.setenv("TRUSTED_PROXY_IPS", "172.16.0.0/12,127.0.0.1")
+
+    def make_req(peer_ip: str, xff: str | None = None) -> Request:
+        headers = []
+        if xff is not None:
+            headers.append((b"x-forwarded-for", xff.encode("latin-1")))
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/v1/scenarios",
+            "headers": headers,
+            "client": (peer_ip, 12345),
+        }
+        return Request(scope)
+
+    # 1. From trusted proxy: extract rightmost non-proxy client IP (ignores attacker spoof on left)
+    assert extract_client_ip(make_req("172.18.0.5", "9.9.9.9, 203.0.113.42")) == "203.0.113.42"
+    # 2. From trusted proxy with single IP: returns that client IP
+    assert extract_client_ip(make_req("127.0.0.1", "198.51.100.7")) == "198.51.100.7"
+    # 3. From untrusted direct peer: ignores X-Forwarded-For completely
+    assert extract_client_ip(make_req("198.51.100.88", "1.2.3.4")) == "198.51.100.88"
+
+
