@@ -166,7 +166,15 @@ def _call_llm_for_diagnosis(
         return None
 
     try:
+        import litellm
         from litellm import completion
+
+        # Opt-in Langfuse observability if keys are set in environment
+        if os.getenv("LANGFUSE_PUBLIC_KEY") and os.getenv("LANGFUSE_SECRET_KEY"):
+            if "langfuse" not in litellm.success_callback:
+                litellm.success_callback.append("langfuse")
+            if "langfuse" not in litellm.failure_callback:
+                litellm.failure_callback.append("langfuse")
 
         telemetry_prompt = "\n".join(
             [f"- [{e.id}] ({e.kind}): {e.summary}" for e in telemetry_evidence]
