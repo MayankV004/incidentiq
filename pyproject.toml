@@ -30,6 +30,9 @@ dependencies = [
 [tool.pytest.ini_options]
 pythonpath = ["."]
 
+[tool.ruff]
+extend-exclude = ["docs", "reports"]
+
 [tool.mypy]
 python_version = "3.12"
 explicit_package_bases = true

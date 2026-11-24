@@ -213,6 +213,7 @@ def run_incident_workflow(incident_id: str, alert: Alert):
         stream_config["callbacks"] = [langfuse_handler]
         stream_config["run_name"] = f"triage-graph-{alert.service}"
 
+    trace_ctx: Any = None
     if langfuse_handler and langfuse_client:
         from langfuse import propagate_attributes
 
@@ -237,7 +238,7 @@ def run_incident_workflow(incident_id: str, alert: Alert):
 
     try:
         with trace_ctx:
-            for chunk in incident_graph.stream(
+            for chunk in incident_graph.stream(  # type: ignore[call-overload]
                 initial_state, stream_mode="updates", config=stream_config
             ):
                 for node, update in chunk.items():
@@ -252,7 +253,7 @@ def run_incident_workflow(incident_id: str, alert: Alert):
                     event_type = "agent_finished"
                     title = node.replace("_", " ").title()
                     summary = ""
-                    event_data = {}
+                    event_data: dict[str, Any] = {}
 
                     if node == "input_guard":
                         event_type = "guardrail_executed"

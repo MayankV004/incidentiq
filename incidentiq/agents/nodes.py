@@ -155,7 +155,7 @@ def _call_llm_for_diagnosis(
     alert: Any,
     telemetry_evidence: list[Evidence],
     kb_evidence: list[Evidence],
-) -> Hypothesis | None:
+) -> tuple[Hypothesis | None, str | None]:
     """Invokes LiteLLM for dynamic root cause diagnosis when an LLM is configured."""
     api_key = (
         os.getenv("LLM_API_KEY_PRIMARY")
@@ -179,8 +179,9 @@ def _call_llm_for_diagnosis(
             host = os.getenv("LANGFUSE_HOST") or os.getenv(
                 "LANGFUSE_BASE_URL", "https://cloud.langfuse.com"
             )
-            os.environ["LANGFUSE_BASE_URL"] = host
-            os.environ["LANGFUSE_HOST"] = host
+            if host:
+                os.environ["LANGFUSE_BASE_URL"] = str(host)
+                os.environ["LANGFUSE_HOST"] = str(host)
             if "langfuse" not in litellm.success_callback:
                 litellm.success_callback.append("langfuse")
             if "langfuse" not in litellm.failure_callback:

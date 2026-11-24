@@ -75,9 +75,9 @@ def append_event_to_db(incident_id: str, event: dict[str, Any]):
         rec = db.query(IncidentRecord).filter(IncidentRecord.id == incident_id).first()
         if not rec:
             return
-        curr_events = list(rec.events or [])
+        curr_events = list(rec.events or [])  # type: ignore[arg-type]
         curr_events.append(event)
-        rec.events = curr_events
+        rec.events = curr_events  # type: ignore[assignment]
         db.commit()
 
 
