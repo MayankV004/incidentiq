@@ -12,13 +12,14 @@ from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from starlette.responses import StreamingResponse
+from starlette.responses import JSONResponse, StreamingResponse
 
 load_dotenv()
 
 logger = logging.getLogger("incidentiq.api")
 
 from incidentiq.agents.graph import incident_graph
+from incidentiq.api.security import SecurityAndRateLimitMiddleware, get_daily_cost_cap
 from incidentiq.db import init_db
 from incidentiq.db.repository import (
     append_event_to_db,
@@ -26,6 +27,7 @@ from incidentiq.db.repository import (
     list_incidents_from_db,
     upsert_incident,
 )
+from incidentiq.guardrails.guards import GuardrailManager
 from incidentiq.schemas.models import Alert
 from incidentiq.security.tokens import consume_server_approval_token
 from mcp_servers.remediation.server import (
@@ -40,13 +42,47 @@ init_db()
 
 app = FastAPI(title="IncidentIQ: Autonomous On-Call Triage Control Plane", version="1.0.0")
 
+ALLOWED_ORIGINS = [
+    orig.strip()
+    for orig in os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
+    if orig.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+app.add_middleware(SecurityAndRateLimitMiddleware)
+
+
+@app.exception_handler(HTTPException)
+async def custom_http_exception_handler(request: Request, exc: HTTPException):
+    """Enforces standard error response shape: { "error": { "code", "message", "details" } }."""
+    if isinstance(exc.detail, dict) and "error" in exc.detail:
+        return JSONResponse(status_code=exc.status_code, content=exc.detail)
+    error_code = "HTTP_ERROR"
+    if exc.status_code == 404:
+        error_code = "NOT_FOUND"
+    elif exc.status_code == 409:
+        error_code = "STATE_CONFLICT"
+    elif exc.status_code == 403:
+        error_code = "FORBIDDEN"
+    elif exc.status_code == 401:
+        error_code = "UNAUTHORIZED"
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": {
+                "code": error_code,
+                "message": str(exc.detail),
+                "details": {},
+            }
+        },
+    )
 
 # In-memory store for incidents and active SSE stream subscribers
 INCIDENTS_DB: dict[str, dict[str, Any]] = {}
@@ -89,8 +125,14 @@ class ApprovalDecisionRequest(BaseModel):
 
 
 @app.get("/health")
-def health():
+@app.get("/healthz")
+def healthz():
     return {"status": "ok", "service": "incidentiq_api"}
+
+
+@app.get("/readyz")
+def readyz():
+    return {"status": "ready", "service": "incidentiq_api"}
 
 
 def broadcast_event(incident_id: str, event: dict[str, Any]):
@@ -433,31 +475,74 @@ def list_incidents():
 
 @app.post("/v1/incidents", status_code=202)
 def create_incident(req: CreateIncidentRequest, background_tasks: BackgroundTasks):
+    now = time.time()
+    today_start = now - (now % 86400)
+    daily_cost = sum(
+        inc.get("cost_usd", 0.0)
+        for inc in INCIDENTS_DB.values()
+        if inc.get("created_at", 0) >= today_start
+    )
+    daily_cap = get_daily_cost_cap()
+    if daily_cost >= daily_cap:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "error": {
+                    "code": "BUDGET_EXCEEDED",
+                    "message": f"Daily budget cap of ${daily_cap:.2f} exceeded (current: ${daily_cost:.2f})",
+                    "details": {
+                        "daily_cost_cap_usd": daily_cap,
+                        "current_cost_usd": round(daily_cost, 4),
+                    },
+                }
+            },
+        )
+
     incident_id = f"inc_{uuid.uuid4().hex[:10]}"
 
-    alert = Alert(
+    raw_alert = Alert(
         service=req.service,
         symptom=req.symptom,
         window_start=req.window_start or time.strftime("%Y-%m-%dT%H:%M:%SZ"),
         window_end=req.window_end or time.strftime("%Y-%m-%dT%H:%M:%SZ"),
     )
 
+    # AUD-04: Execute input guard (PII redaction and injection scan) before persistence or queueing
+    clean_alert, initial_flags = GuardrailManager.process_input_alert(raw_alert)
+
+    initial_events = []
+    if initial_flags:
+        initial_events.append(
+            {
+                "id": f"ev_{uuid.uuid4().hex[:6]}",
+                "type": "guardrail_executed",
+                "node": "input_guard",
+                "title": "Input Guardrail Executed",
+                "summary": f"Scanned alert before storage. Flags: {len(initial_flags)}",
+                "data": {"guardrail_flags": initial_flags},
+                "cost_usd": 0.0,
+                "steps": 0,
+                "timestamp": time.time(),
+            }
+        )
+
     INCIDENTS_DB[incident_id] = {
         "incident_id": incident_id,
         "scenario_id": req.scenario_id,
-        "alert": alert.model_dump(),
+        "alert": clean_alert.model_dump(),
         "status": "queued",
         "created_at": time.time(),
-        "events": [],
+        "events": initial_events,
+        "guardrail_flags": list(initial_flags),
     }
 
     try:
         upsert_incident(INCIDENTS_DB[incident_id])
     except Exception as e:  # noqa: BLE001
-        logger.debug(f"DB create failed: {e}")
+        logger.error(f"DB create failed: {e}")
 
-    # Run workflow asynchronously
-    background_tasks.add_task(run_incident_workflow, incident_id, alert)
+    # Run workflow asynchronously using sanitized alert
+    background_tasks.add_task(run_incident_workflow, incident_id, clean_alert)
     return {"incident_id": incident_id, "status": "queued", "message": "Incident investigation launched"}
 
 

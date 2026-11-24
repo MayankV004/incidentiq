@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from fastapi.testclient import TestClient
 
 from incidentiq.api.main import INCIDENTS_DB, app, run_incident_workflow
+from incidentiq.api.security import get_api_key
 from incidentiq.schemas.models import Alert
 from incidentiq.security.tokens import (
     generate_capability_token,
@@ -164,8 +165,10 @@ def test_raw_token_never_exposed_in_sse_or_rest():
 
     run_incident_workflow(inc_id, alert)
 
+    headers = {"X-API-Key": get_api_key()}
+
     # 2. Check REST GET /v1/incidents/{id}
-    resp = client.get(f"/v1/incidents/{inc_id}")
+    resp = client.get(f"/v1/incidents/{inc_id}", headers=headers)
     assert resp.status_code == 200
     data = resp.json()
 
@@ -182,7 +185,7 @@ def test_raw_token_never_exposed_in_sse_or_rest():
     assert approval_id.startswith("appr_req_")
 
     # 3. Check SSE stream output for raw capability token leak
-    stream_resp = client.get(f"/v1/incidents/{inc_id}/stream")
+    stream_resp = client.get(f"/v1/incidents/{inc_id}/stream", headers=headers)
     assert stream_resp.status_code == 200
     stream_text = stream_resp.text
 
@@ -194,6 +197,7 @@ def test_raw_token_never_exposed_in_sse_or_rest():
     appr_resp = client.post(
         f"/v1/incidents/{inc_id}/approval",
         json={"decision": "approve", "approval_id": approval_id},
+        headers=headers,
     )
     assert appr_resp.status_code == 200
     assert appr_resp.json()["status"] == "approved_and_executed"
