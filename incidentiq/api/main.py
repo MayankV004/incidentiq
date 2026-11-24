@@ -27,10 +27,12 @@ from incidentiq.db.repository import (
     upsert_incident,
 )
 from incidentiq.schemas.models import Alert
+from incidentiq.security.tokens import consume_server_approval_token
 from mcp_servers.remediation.server import (
     restart_service,
     review_config,
     rollback_deploy,
+    scale_up,
 )
 
 # Initialize database schema on startup
@@ -82,7 +84,8 @@ class CreateIncidentRequest(BaseModel):
 
 class ApprovalDecisionRequest(BaseModel):
     decision: str  # "approve" | "reject"
-    approval_token: str
+    approval_id: str | None = None
+    approval_token: str | None = None
 
 
 @app.get("/health")
@@ -245,7 +248,13 @@ def run_incident_workflow(incident_id: str, alert: Alert):
                             approval_dict = appr
                             event_type = "approval_required"
                             summary = f"Action requires authorization: {appr.get('action', {}).get('type')}"
-                            event_data = {"approval": appr}
+                            event_data = {
+                                "approval": {
+                                    "approval_id": appr.get("approval_id"),
+                                    "status": appr.get("status"),
+                                    "action": appr.get("action"),
+                                }
+                            }
                         else:
                             summary = "No destructive remediation needed"
 
@@ -457,7 +466,13 @@ def get_incident(incident_id: str):
     inc = INCIDENTS_DB.get(incident_id) or get_incident_from_db(incident_id)
     if not inc:
         raise HTTPException(status_code=404, detail="Incident not found")
-    return inc
+    safe_inc = dict(inc)
+    if safe_inc.get("approval"):
+        appr = dict(safe_inc["approval"])
+        appr.pop("token_hash", None)
+        appr.pop("approval_token", None)
+        safe_inc["approval"] = appr
+    return safe_inc
 
 
 @app.get("/v1/incidents/{incident_id}/stream")
@@ -515,21 +530,28 @@ def handle_approval(incident_id: str, req: ApprovalDecisionRequest):
 
     inc = INCIDENTS_DB[incident_id]
     if inc.get("status") != "awaiting_approval":
-        raise HTTPException(status_code=400, detail="Incident is not awaiting approval")
+        raise HTTPException(status_code=409, detail="Incident is not awaiting approval")
 
-    approval_info = inc.get("approval")
-    expected_token = approval_info.get("approval_token") if approval_info else None
+    approval_info = inc.get("approval") or {}
+    expected_approval_id = approval_info.get("approval_id")
 
-    if req.approval_token != expected_token:
-        raise HTTPException(status_code=403, detail="Invalid approval token")
+    req_approval_id = req.approval_id or req.approval_token
+    if not expected_approval_id or req_approval_id != expected_approval_id:
+        raise HTTPException(status_code=403, detail="Invalid approval credentials: unknown or mismatched approval_id")
 
     if req.decision.lower() == "reject":
         inc["status"] = "rejected_by_human"
+        consume_server_approval_token(expected_approval_id)
         try:
             upsert_incident(inc)
         except Exception as e:  # noqa: BLE001
-            logger.debug(f"DB update on reject failed: {e}")
+            logger.error(f"DB update on reject failed: {e}")
         return {"status": "rejected", "message": "Remediation action rejected by engineer"}
+
+    # Retrieve and consume server-side capability token (single-use)
+    token = consume_server_approval_token(expected_approval_id)
+    if not token:
+        raise HTTPException(status_code=403, detail="Approval token already consumed or unavailable")
 
     # Execute dry-run remediation tool via MCP
     action = approval_info.get("action", {})
@@ -537,11 +559,13 @@ def handle_approval(incident_id: str, req: ApprovalDecisionRequest):
     target = action.get("target")
 
     if act_type == "restart_service":
-        exec_res = restart_service(service=target, token=req.approval_token)
+        exec_res = restart_service(service=target, token=token, incident_id=incident_id)
     elif act_type == "rollback_deploy":
-        exec_res = rollback_deploy(service=target, target_version="v2.4.0", token=req.approval_token)
+        exec_res = rollback_deploy(service=target, target_version="v2.4.0", token=token, incident_id=incident_id)
+    elif act_type == "scale_up":
+        exec_res = scale_up(service=target, replicas=2, token=token, incident_id=incident_id)
     elif act_type == "review_config":
-        exec_res = review_config(service=target, parameter="MAX_DB_POOL_SIZE", proposed_value="20", token=req.approval_token)
+        exec_res = review_config(service=target, parameter="MAX_DB_POOL_SIZE", proposed_value="20", token=token, incident_id=incident_id)
     else:
         exec_res = {"success": True, "message": "No destructive action required"}
 
@@ -550,7 +574,7 @@ def handle_approval(incident_id: str, req: ApprovalDecisionRequest):
     try:
         upsert_incident(inc)
     except Exception as e:  # noqa: BLE001
-        logger.debug(f"DB update on approve failed: {e}")
+        logger.error(f"DB update on approve failed: {e}")
     return {"status": "approved_and_executed", "result": exec_res}
 
 

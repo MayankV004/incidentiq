@@ -5,6 +5,7 @@ from incidentiq.agents.graph import incident_graph
 from incidentiq.guardrails.guards import GuardrailManager
 from incidentiq.rag.engine import get_rag_engine
 from incidentiq.schemas.models import Alert
+from incidentiq.security.tokens import generate_capability_token
 from mcp_servers.logs.server import wrap_untrusted
 from mcp_servers.remediation.server import restart_service
 
@@ -35,8 +36,11 @@ def test_mcp_remediation_token_enforcement():
     assert fail_res["success"] is False
     assert "UNAUTHORIZED_ACTION" in fail_res["error"]
 
-    # Valid token succeeds in dry-run mode
-    pass_res = restart_service("orders", token="appr_secure_12345")
+    # Valid HMAC capability token succeeds in dry-run mode
+    valid_token = generate_capability_token(
+        incident_id="test_core_inc", action="restart_service", target="orders"
+    )
+    pass_res = restart_service("orders", token=valid_token, incident_id="test_core_inc")
     assert pass_res["success"] is True
     assert pass_res["status"] == "dry_run_success"
 

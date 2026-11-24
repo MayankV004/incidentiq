@@ -42,6 +42,7 @@ export interface Hypothesis {
 
 export interface ApprovalInfo {
   required: boolean;
+  approval_id?: string;
   approval_token?: string;
   action?: {
     type: string;

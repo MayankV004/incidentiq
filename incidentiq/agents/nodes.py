@@ -8,6 +8,11 @@ from incidentiq.agents.state import IncidentState
 from incidentiq.guardrails.guards import GuardrailManager
 from incidentiq.rag.engine import get_rag_engine
 from incidentiq.schemas.models import Action, Evidence, Hypothesis
+from incidentiq.security.tokens import (
+    generate_capability_token,
+    hash_token,
+    register_server_approval_token,
+)
 from mcp_servers.logs.server import get_error_clusters, search_logs
 from mcp_servers.metrics.server import detect_anomaly, query_metric
 
@@ -449,12 +454,24 @@ def human_approval_node(state: IncidentState) -> dict[str, Any]:
     ):
         return {"approval": None, "steps": 1}
 
-    # Generate an action approval authorization token
-    action_token = f"appr_{uuid.uuid4().hex[:12]}"
+    incident_id = state.get("incident_id", "unknown_incident")
+    approval_id = f"appr_req_{uuid.uuid4().hex[:10]}"
+    action_dict = hypothesis.suggested_action.model_dump()
+
+    # Generate server-side signed capability token (HMAC-SHA256, 15m TTL)
+    raw_token = generate_capability_token(
+        incident_id=incident_id,
+        action=action_dict.get("type", ""),
+        target=action_dict.get("target", ""),
+    )
+    register_server_approval_token(approval_id, raw_token)
+
+    # State retains only approval_id, status, action, and token_hash (NEVER raw capability token)
     approval_data = {
+        "approval_id": approval_id,
         "status": "awaiting_approval",
-        "action": hypothesis.suggested_action.model_dump(),
-        "approval_token": action_token,
+        "action": action_dict,
+        "token_hash": hash_token(raw_token),
     }
     return {
         "approval": approval_data,

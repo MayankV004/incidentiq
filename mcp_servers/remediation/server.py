@@ -3,28 +3,47 @@ from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 
+from incidentiq.security.tokens import get_approval_secret, verify_capability_token
+
 server = MCPServer("remediation_server")
 
-APPROVAL_TOKEN_SECRET = os.getenv("APPROVAL_TOKEN_SECRET", "mock_approval_secret_key")
+APPROVAL_TOKEN_SECRET = os.getenv("APPROVAL_TOKEN_SECRET", get_approval_secret())
 
 
-def verify_approval_token(token: str) -> bool:
-    """Verifies that an action token is authorized by a human."""
-    # Checks token presence and validity
-    return bool(token and token.startswith("appr_") and len(token) >= 12)
+def verify_approval_token(
+    token: str,
+    expected_action: str | None = None,
+    expected_target: str | None = None,
+    expected_incident_id: str | None = None,
+    consume: bool = True,
+) -> tuple[bool, str]:
+    """Verifies that an action token is cryptographically authorized by a human."""
+    return verify_capability_token(
+        token=token,
+        expected_action=expected_action,
+        expected_target=expected_target,
+        expected_incident_id=expected_incident_id,
+        consume=consume,
+    )
 
 
 @server.tool()
-def restart_service(service: str, token: str) -> dict[str, Any]:
+def restart_service(service: str, token: str, incident_id: str = "") -> dict[str, Any]:
     """Restarts a failing microservice container.
 
     MANDATORY REQUIREMENT: Requires an approved single-use token from the on-call engineer.
     Executes in safe dry-run mode.
     """
-    if not verify_approval_token(token):
+    valid, reason = verify_approval_token(
+        token=token,
+        expected_action="restart_service",
+        expected_target=service,
+        expected_incident_id=incident_id or None,
+    )
+    if not valid:
         return {
             "success": False,
-            "error": "UNAUTHORIZED_ACTION: Valid human approval token is required before executing restart_service.",
+            "error": f"UNAUTHORIZED_ACTION: {reason}",
         }
 
     return {
@@ -37,12 +56,18 @@ def restart_service(service: str, token: str) -> dict[str, Any]:
 
 
 @server.tool()
-def rollback_deploy(service: str, target_version: str, token: str) -> dict[str, Any]:
+def rollback_deploy(service: str, target_version: str, token: str, incident_id: str = "") -> dict[str, Any]:
     """Rolls back a deployment to a prior git commit / image tag. Requires approved token."""
-    if not verify_approval_token(token):
+    valid, reason = verify_approval_token(
+        token=token,
+        expected_action="rollback_deploy",
+        expected_target=service,
+        expected_incident_id=incident_id or None,
+    )
+    if not valid:
         return {
             "success": False,
-            "error": "UNAUTHORIZED_ACTION: Valid human approval token is required before executing rollback_deploy.",
+            "error": f"UNAUTHORIZED_ACTION: {reason}",
         }
 
     return {
@@ -56,12 +81,18 @@ def rollback_deploy(service: str, target_version: str, token: str) -> dict[str, 
 
 
 @server.tool()
-def scale_up(service: str, replicas: int, token: str) -> dict[str, Any]:
+def scale_up(service: str, replicas: int, token: str, incident_id: str = "") -> dict[str, Any]:
     """Scales up the replica count of a service. Requires approved token."""
-    if not verify_approval_token(token):
+    valid, reason = verify_approval_token(
+        token=token,
+        expected_action="scale_up",
+        expected_target=service,
+        expected_incident_id=incident_id or None,
+    )
+    if not valid:
         return {
             "success": False,
-            "error": "UNAUTHORIZED_ACTION: Valid human approval token is required before executing scale_up.",
+            "error": f"UNAUTHORIZED_ACTION: {reason}",
         }
 
     return {
@@ -75,12 +106,20 @@ def scale_up(service: str, replicas: int, token: str) -> dict[str, Any]:
 
 
 @server.tool()
-def review_config(service: str, parameter: str, proposed_value: str, token: str) -> dict[str, Any]:
+def review_config(
+    service: str, parameter: str, proposed_value: str, token: str, incident_id: str = ""
+) -> dict[str, Any]:
     """Prepares and validates a configuration change recommendation. Requires approved token."""
-    if not verify_approval_token(token):
+    valid, reason = verify_approval_token(
+        token=token,
+        expected_action="review_config",
+        expected_target=service,
+        expected_incident_id=incident_id or None,
+    )
+    if not valid:
         return {
             "success": False,
-            "error": "UNAUTHORIZED_ACTION: Valid human approval token is required before executing review_config.",
+            "error": f"UNAUTHORIZED_ACTION: {reason}",
         }
 
     return {
