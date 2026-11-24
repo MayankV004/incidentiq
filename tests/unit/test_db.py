@@ -14,7 +14,7 @@ def test_database_crud():
     # 1. Initialize schema
     init_db()
 
-    inc_id = f"test_inc_{int(time.time()*1000)}"
+    inc_id = f"test_inc_{int(time.time() * 1000)}"
     data = {
         "incident_id": inc_id,
         "scenario_id": "001_orders_db_pool_exhaustion",

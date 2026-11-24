@@ -24,7 +24,9 @@ def test_v1_routes_require_api_key():
     assert err_missing["error"]["code"] == "UNAUTHORIZED"
 
     # 2. Invalid API Key
-    res_invalid = client.get("/v1/scenarios", headers={"X-API-Key": "invalid_wrong_key"})
+    res_invalid = client.get(
+        "/v1/scenarios", headers={"X-API-Key": "invalid_wrong_key"}
+    )
     assert res_invalid.status_code == 401
     err_invalid = res_invalid.json()
     assert err_invalid["error"]["code"] == "UNAUTHORIZED"
@@ -104,7 +106,9 @@ def test_pii_redacted_before_persistence_and_raw_alert():
     raw_email = "victim.user@example.com"
     raw_phone = "555-987-6543"
     raw_card = "4532-1234-5678-9012"
-    symptom_with_pii = f"Payment failure for {raw_email} phone {raw_phone} card {raw_card}"
+    symptom_with_pii = (
+        f"Payment failure for {raw_email} phone {raw_phone} card {raw_card}"
+    )
 
     payload = {
         "service": "payments",
@@ -149,7 +153,9 @@ def test_approval_conflict_returns_409_and_standard_error_shape():
         "decision": "approve",
         "approval_id": "appr_req_fake",
     }
-    res = client.post(f"/v1/incidents/{mock_id}/approval", json=payload, headers=AUTH_HEADERS)
+    res = client.post(
+        f"/v1/incidents/{mock_id}/approval", json=payload, headers=AUTH_HEADERS
+    )
     assert res.status_code == 409
     data = res.json()
     assert "error" in data

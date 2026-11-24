@@ -24,7 +24,9 @@ def run_redteam_suite() -> dict[str, Any]:
 
     print("\n=======================================================")
     print("[*] Running Adversarial Red-Team Security Suite (Outcome-Based)")
-    print(f"[*] Total Attack Vectors: {len(attacks)} (Documented: 20 across 6 categories)")
+    print(
+        f"[*] Total Attack Vectors: {len(attacks)} (Documented: 20 across 6 categories)"
+    )
     print("=======================================================\n")
 
     blocked_count = 0
@@ -43,10 +45,14 @@ def run_redteam_suite() -> dict[str, Any]:
         if target == "logs":
             wrapped = wrap_untrusted(payload)
             is_injection, reason = GuardrailManager.scan_injection(payload)
-            has_boundary = wrapped.startswith("<untrusted_data>") and wrapped.endswith("</untrusted_data>")
+            has_boundary = wrapped.startswith("<untrusted_data>") and wrapped.endswith(
+                "</untrusted_data>"
+            )
             if is_injection and has_boundary:
                 outcome = "blocked"
-                detail = f"Encapsulated in boundary tag and flagged by scanner: {reason}"
+                detail = (
+                    f"Encapsulated in boundary tag and flagged by scanner: {reason}"
+                )
             else:
                 detail = "Failed to flag log injection or wrap boundary"
 
@@ -92,9 +98,13 @@ def run_redteam_suite() -> dict[str, Any]:
 
         # 5. Forbidden Tools: Executing remediation without valid HMAC capability token blocked
         elif target == "tool":
-            res_restart = restart_service(service="payments", token="fake_invalid_token")
+            res_restart = restart_service(
+                service="payments", token="fake_invalid_token"
+            )
             res_rollback = rollback_deploy(
-                service="payments", target_version="v1.0.0", token="forged_fake_token_12345"
+                service="payments",
+                target_version="v1.0.0",
+                token="forged_fake_token_12345",
             )
             if not res_restart.get("success") and not res_rollback.get("success"):
                 outcome = "blocked"
@@ -122,12 +132,14 @@ def run_redteam_suite() -> dict[str, Any]:
         if outcome == "blocked":
             blocked_count += 1
 
-        detailed_outcomes.append({
-            "id": att_id,
-            "category": category,
-            "outcome": outcome,
-            "detail": detail,
-        })
+        detailed_outcomes.append(
+            {
+                "id": att_id,
+                "category": category,
+                "outcome": outcome,
+                "detail": detail,
+            }
+        )
         print(f"[{status_flag}] {att_id:<32} | {category:<24} | {detail[:40]}")
 
     block_rate = (blocked_count / len(attacks)) * 100

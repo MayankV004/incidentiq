@@ -41,11 +41,15 @@ from mcp_servers.remediation.server import (
 # Initialize database schema on startup
 init_db()
 
-app = FastAPI(title="IncidentIQ: Autonomous On-Call Triage Control Plane", version="1.0.0")
+app = FastAPI(
+    title="IncidentIQ: Autonomous On-Call Triage Control Plane", version="1.0.0"
+)
 
 ALLOWED_ORIGINS = [
     orig.strip()
-    for orig in os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
+    for orig in os.getenv(
+        "ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000"
+    ).split(",")
     if orig.strip()
 ]
 
@@ -85,6 +89,7 @@ async def custom_http_exception_handler(request: Request, exc: HTTPException):
         },
     )
 
+
 # In-memory store for incidents and active SSE stream subscribers
 INCIDENTS_DB: dict[str, dict[str, Any]] = {}
 SUBSCRIBERS: dict[str, list[asyncio.Queue]] = {}
@@ -100,7 +105,9 @@ def get_langfuse_handler():
         from langfuse import get_client
         from langfuse.langchain import CallbackHandler
 
-        host = os.getenv("LANGFUSE_HOST") or os.getenv("LANGFUSE_BASE_URL", "https://cloud.langfuse.com")
+        host = os.getenv("LANGFUSE_HOST") or os.getenv(
+            "LANGFUSE_BASE_URL", "https://cloud.langfuse.com"
+        )
         os.environ["LANGFUSE_BASE_URL"] = host
         os.environ["LANGFUSE_HOST"] = host
         handler = CallbackHandler()
@@ -230,7 +237,9 @@ def run_incident_workflow(incident_id: str, alert: Alert):
 
     try:
         with trace_ctx:
-            for chunk in incident_graph.stream(initial_state, stream_mode="updates", config=stream_config):
+            for chunk in incident_graph.stream(
+                initial_state, stream_mode="updates", config=stream_config
+            ):
                 for node, update in chunk.items():
                     if not isinstance(update, dict):
                         continue
@@ -261,20 +270,29 @@ def run_incident_workflow(incident_id: str, alert: Alert):
                         event_type = "evidence_found"
                         node_ev = update.get("evidence", [])
                         for e in node_ev:
-                            collected_evidence.append(e.model_dump() if hasattr(e, "model_dump") else e)
+                            collected_evidence.append(
+                                e.model_dump() if hasattr(e, "model_dump") else e
+                            )
                         ev_count = len(node_ev)
                         summary = f"Extracted {ev_count} factual evidence item(s)"
                         event_data = {
-                            "evidence": [e.model_dump() if hasattr(e, "model_dump") else e for e in node_ev]
+                            "evidence": [
+                                e.model_dump() if hasattr(e, "model_dump") else e
+                                for e in node_ev
+                            ]
                         }
 
                     elif node == "root_cause_agent":
                         event_type = "hypothesis_synthesized"
                         h = update.get("hypothesis")
                         if h:
-                            hypothesis_dict = h.model_dump() if hasattr(h, "model_dump") else h
-                            cause_title = hypothesis_dict.get("category") or hypothesis_dict.get("root_cause")
-                            summary = f"Diagnosis: {cause_title} (Confidence: {int(hypothesis_dict.get('confidence', 0)*100)}%)"
+                            hypothesis_dict = (
+                                h.model_dump() if hasattr(h, "model_dump") else h
+                            )
+                            cause_title = hypothesis_dict.get(
+                                "category"
+                            ) or hypothesis_dict.get("root_cause")
+                            summary = f"Diagnosis: {cause_title} (Confidence: {int(hypothesis_dict.get('confidence', 0) * 100)}%)"
                             event_data = {"hypothesis": hypothesis_dict}
 
                     elif node == "output_guard":
@@ -282,9 +300,14 @@ def run_incident_workflow(incident_id: str, alert: Alert):
                         flags.extend(update.get("guardrail_flags", []))
                         h = update.get("hypothesis")
                         if h:
-                            hypothesis_dict = h.model_dump() if hasattr(h, "model_dump") else h
+                            hypothesis_dict = (
+                                h.model_dump() if hasattr(h, "model_dump") else h
+                            )
                         summary = "Evaluated hallucination & groundedness gate"
-                        event_data = {"guardrail_flags": flags, "hypothesis": hypothesis_dict}
+                        event_data = {
+                            "guardrail_flags": flags,
+                            "hypothesis": hypothesis_dict,
+                        }
 
                     elif node == "human_approval":
                         appr = update.get("approval")
@@ -451,9 +474,18 @@ def list_incidents():
                     "cost_usd": inc.get("cost_usd", 0.0),
                     "latency_ms": inc.get("latency_ms", 0.0),
                     "created_at": inc.get("created_at"),
-                    "category": inc.get("hypothesis", {}).get("category") if inc.get("hypothesis") else None,
-                    "root_cause": (inc.get("hypothesis", {}).get("category") or inc.get("hypothesis", {}).get("root_cause")) if inc.get("hypothesis") else None,
-                    "confidence": inc.get("hypothesis", {}).get("confidence") if inc.get("hypothesis") else None,
+                    "category": inc.get("hypothesis", {}).get("category")
+                    if inc.get("hypothesis")
+                    else None,
+                    "root_cause": (
+                        inc.get("hypothesis", {}).get("category")
+                        or inc.get("hypothesis", {}).get("root_cause")
+                    )
+                    if inc.get("hypothesis")
+                    else None,
+                    "confidence": inc.get("hypothesis", {}).get("confidence")
+                    if inc.get("hypothesis")
+                    else None,
                     "langfuse_trace_url": inc.get("langfuse_trace_url"),
                 }
                 for inc in db_records
@@ -470,12 +502,23 @@ def list_incidents():
             "cost_usd": inc.get("cost_usd", 0.0),
             "latency_ms": inc.get("latency_ms", 0.0),
             "created_at": inc.get("created_at"),
-            "category": inc.get("hypothesis", {}).get("category") if inc.get("hypothesis") else None,
-            "root_cause": (inc.get("hypothesis", {}).get("category") or inc.get("hypothesis", {}).get("root_cause")) if inc.get("hypothesis") else None,
-            "confidence": inc.get("hypothesis", {}).get("confidence") if inc.get("hypothesis") else None,
+            "category": inc.get("hypothesis", {}).get("category")
+            if inc.get("hypothesis")
+            else None,
+            "root_cause": (
+                inc.get("hypothesis", {}).get("category")
+                or inc.get("hypothesis", {}).get("root_cause")
+            )
+            if inc.get("hypothesis")
+            else None,
+            "confidence": inc.get("hypothesis", {}).get("confidence")
+            if inc.get("hypothesis")
+            else None,
             "langfuse_trace_url": inc.get("langfuse_trace_url"),
         }
-        for inc_id, inc in sorted(INCIDENTS_DB.items(), key=lambda x: x[1].get("created_at", 0), reverse=True)
+        for inc_id, inc in sorted(
+            INCIDENTS_DB.items(), key=lambda x: x[1].get("created_at", 0), reverse=True
+        )
     ]
 
 
@@ -549,7 +592,11 @@ def create_incident(req: CreateIncidentRequest, background_tasks: BackgroundTask
 
     # Run workflow asynchronously using sanitized alert
     background_tasks.add_task(run_incident_workflow, incident_id, clean_alert)
-    return {"incident_id": incident_id, "status": "queued", "message": "Incident investigation launched"}
+    return {
+        "incident_id": incident_id,
+        "status": "queued",
+        "message": "Incident investigation launched",
+    }
 
 
 @app.get("/v1/incidents/{incident_id}")
@@ -588,7 +635,14 @@ async def stream_incident(incident_id: str, request: Request):
 
             # Check if incident is already done
             status = INCIDENTS_DB[incident_id].get("status")
-            if status in ("completed", "awaiting_approval", "abstained", "failed", "remediation_executed", "rejected_by_human"):
+            if status in (
+                "completed",
+                "awaiting_approval",
+                "abstained",
+                "failed",
+                "remediation_executed",
+                "rejected_by_human",
+            ):
                 return
 
             # 2. Wait for live events until done or client disconnects
@@ -628,7 +682,10 @@ def handle_approval(incident_id: str, req: ApprovalDecisionRequest):
 
     req_approval_id = req.approval_id or req.approval_token
     if not expected_approval_id or req_approval_id != expected_approval_id:
-        raise HTTPException(status_code=403, detail="Invalid approval credentials: unknown or mismatched approval_id")
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid approval credentials: unknown or mismatched approval_id",
+        )
 
     if req.decision.lower() == "reject":
         inc["status"] = "rejected_by_human"
@@ -637,12 +694,17 @@ def handle_approval(incident_id: str, req: ApprovalDecisionRequest):
             upsert_incident(inc)
         except Exception as e:  # noqa: BLE001
             logger.error(f"DB update on reject failed: {e}")
-        return {"status": "rejected", "message": "Remediation action rejected by engineer"}
+        return {
+            "status": "rejected",
+            "message": "Remediation action rejected by engineer",
+        }
 
     # Retrieve and consume server-side capability token (single-use)
     token = consume_server_approval_token(expected_approval_id)
     if not token:
-        raise HTTPException(status_code=403, detail="Approval token already consumed or unavailable")
+        raise HTTPException(
+            status_code=403, detail="Approval token already consumed or unavailable"
+        )
 
     # Execute dry-run remediation tool via MCP
     action = approval_info.get("action", {})
@@ -652,11 +714,24 @@ def handle_approval(incident_id: str, req: ApprovalDecisionRequest):
     if act_type == "restart_service":
         exec_res = restart_service(service=target, token=token, incident_id=incident_id)
     elif act_type == "rollback_deploy":
-        exec_res = rollback_deploy(service=target, target_version="v2.4.0", token=token, incident_id=incident_id)
+        exec_res = rollback_deploy(
+            service=target,
+            target_version="v2.4.0",
+            token=token,
+            incident_id=incident_id,
+        )
     elif act_type == "scale_up":
-        exec_res = scale_up(service=target, replicas=2, token=token, incident_id=incident_id)
+        exec_res = scale_up(
+            service=target, replicas=2, token=token, incident_id=incident_id
+        )
     elif act_type == "review_config":
-        exec_res = review_config(service=target, parameter="MAX_DB_POOL_SIZE", proposed_value="20", token=token, incident_id=incident_id)
+        exec_res = review_config(
+            service=target,
+            parameter="MAX_DB_POOL_SIZE",
+            proposed_value="20",
+            token=token,
+            incident_id=incident_id,
+        )
     else:
         exec_res = {"success": True, "message": "No destructive action required"}
 
@@ -691,5 +766,5 @@ def get_redteam_cases():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
 
+    uvicorn.run(app, host="0.0.0.0", port=8000)

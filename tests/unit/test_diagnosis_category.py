@@ -47,7 +47,11 @@ def test_diagnosis_summary_contains_real_category():
         hyp = res.get("hypothesis")
         assert hyp is not None
         assert hyp.category == expected_category
-        assert hyp.category in ("db_pool_exhaustion", "dependency_timeout", "memory_leak")
+        assert hyp.category in (
+            "db_pool_exhaustion",
+            "dependency_timeout",
+            "memory_leak",
+        )
 
 
 def test_list_incidents_contains_category_and_root_cause_for_three_faults():
@@ -84,7 +88,9 @@ def test_list_incidents_contains_category_and_root_cause_for_three_faults():
         assert data["hypothesis"]["category"] == expected_category
         # Ensure root_cause is not 'None' in summary events
         hypothesis_events = [
-            e for e in data.get("events", []) if e.get("type") == "hypothesis_synthesized"
+            e
+            for e in data.get("events", [])
+            if e.get("type") == "hypothesis_synthesized"
         ]
         assert len(hypothesis_events) == 1
         assert f"Diagnosis: {expected_category}" in hypothesis_events[0]["summary"]

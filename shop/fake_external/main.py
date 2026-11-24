@@ -37,8 +37,16 @@ def set_chaos(config: ChaosConfig):
     global INJECTED_DELAY_SEC, INJECTED_FAILURE_RATE
     INJECTED_DELAY_SEC = config.delay_sec
     INJECTED_FAILURE_RATE = config.failure_rate
-    logger.info("chaos_updated", delay_sec=INJECTED_DELAY_SEC, failure_rate=INJECTED_FAILURE_RATE)
-    return {"status": "updated", "delay_sec": INJECTED_DELAY_SEC, "failure_rate": INJECTED_FAILURE_RATE}
+    logger.info(
+        "chaos_updated",
+        delay_sec=INJECTED_DELAY_SEC,
+        failure_rate=INJECTED_FAILURE_RATE,
+    )
+    return {
+        "status": "updated",
+        "delay_sec": INJECTED_DELAY_SEC,
+        "failure_rate": INJECTED_FAILURE_RATE,
+    }
 
 
 @app.post("/charge")
@@ -50,10 +58,14 @@ async def charge(req: ChargeRequest):
         await asyncio.sleep(delay)
 
     # Simulate random or forced failures
-    failure_rate = INJECTED_FAILURE_RATE or float(os.getenv("EXTERNAL_FAILURE_RATE", "0.0"))
+    failure_rate = INJECTED_FAILURE_RATE or float(
+        os.getenv("EXTERNAL_FAILURE_RATE", "0.0")
+    )
     if failure_rate > 0 and random.random() < failure_rate:
         logger.error("external_bank_downtime_error", amount=req.amount)
-        raise HTTPException(status_code=503, detail="External Payment Gateway 503 Service Unavailable")
+        raise HTTPException(
+            status_code=503, detail="External Payment Gateway 503 Service Unavailable"
+        )
 
     tx_id = f"tx_{uuid.uuid4().hex[:10]}"
     logger.info("charge_processed", tx_id=tx_id, amount=req.amount)
@@ -67,4 +79,5 @@ async def charge(req: ChargeRequest):
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8004)

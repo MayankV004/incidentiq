@@ -54,10 +54,14 @@ def query_metric(service: str, metric: str, minutes: int = 30) -> dict[str, Any]
     Returns summary stats (min, max, mean, count) and downsampled points.
     """
     if not validate_service(service):
-        return {"error": f"Invalid service '{service}'. Allowed services: {sorted(ALLOWED_SERVICES)}"}
+        return {
+            "error": f"Invalid service '{service}'. Allowed services: {sorted(ALLOWED_SERVICES)}"
+        }
 
     if metric not in ALLOWED_METRICS:
-        return {"error": f"Metric '{metric}' is not allowed. Allowed metrics: {ALLOWED_METRICS}"}
+        return {
+            "error": f"Metric '{metric}' is not allowed. Allowed metrics: {ALLOWED_METRICS}"
+        }
 
     valid_minutes = clamp_window(minutes, max_minutes=180)
     data_mode = os.getenv("DATA_MODE", DATA_MODE)
@@ -72,7 +76,9 @@ def query_metric(service: str, metric: str, minutes: int = 30) -> dict[str, Any]
                 raw = json.load(f)
                 points = raw.get("metrics", {}).get(metric, [])
         else:
-            return {"error": f"Replay scenario '{scenario_id}' metrics not found or invalid path"}
+            return {
+                "error": f"Replay scenario '{scenario_id}' metrics not found or invalid path"
+            }
     else:
         # Live Prometheus query fallback
         try:
@@ -88,7 +94,10 @@ def query_metric(service: str, metric: str, minutes: int = 30) -> dict[str, Any]
             if resp.status_code == 200:
                 result = resp.json().get("data", {}).get("result", [])
                 if result:
-                    points = [{"timestamp": str(p[0]), "value": float(p[1])} for p in result[0].get("values", [])]
+                    points = [
+                        {"timestamp": str(p[0]), "value": float(p[1])}
+                        for p in result[0].get("values", [])
+                    ]
         except (httpx.HTTPError, OSError) as e:
             return {"error": f"Prometheus query failed: {e}", "points": []}
 
@@ -135,7 +144,12 @@ def detect_anomaly(service: str, metric: str, minutes: int = 30) -> dict[str, An
     points = query_res.get("points", [])
     values = [float(p["value"]) for p in points if "value" in p]
     if len(values) < 5:
-        return {"service": service, "metric": metric, "anomalous": False, "reason": "Insufficient points"}
+        return {
+            "service": service,
+            "metric": metric,
+            "anomalous": False,
+            "reason": "Insufficient points",
+        }
 
     baseline = values[: len(values) // 2]
     recent = values[len(values) // 2 :]
@@ -146,7 +160,9 @@ def detect_anomaly(service: str, metric: str, minutes: int = 30) -> dict[str, An
 
     std_floor = max(base_std, base_mean * 0.05, 0.5)
     z_score = abs(recent_mean - base_mean) / std_floor
-    relative_change = abs(recent_mean - base_mean) / (base_mean if base_mean > 0 else 1.0)
+    relative_change = abs(recent_mean - base_mean) / (
+        base_mean if base_mean > 0 else 1.0
+    )
 
     is_anomaly = (z_score >= 2.5 and relative_change >= 0.10) or (
         max(recent) > base_mean * 1.5 and max(recent) > 1.0

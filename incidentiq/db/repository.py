@@ -91,5 +91,7 @@ def get_incident_from_db(incident_id: str) -> dict[str, Any] | None:
 def list_incidents_from_db() -> list[dict[str, Any]]:
     """Lists all incidents from the database ordered by creation date descending."""
     with SessionLocal() as db:
-        records = db.query(IncidentRecord).order_by(IncidentRecord.created_at.desc()).all()
+        records = (
+            db.query(IncidentRecord).order_by(IncidentRecord.created_at.desc()).all()
+        )
         return [r.to_dict() for r in records]

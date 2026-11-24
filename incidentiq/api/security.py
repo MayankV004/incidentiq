@@ -59,7 +59,8 @@ class SecurityAndRateLimitMiddleware(BaseHTTPMiddleware):
 
         # 1. Bypass authentication and rate limiting for health, readiness, and docs
         if (
-            path in ("/health", "/healthz", "/readyz", "/docs", "/openapi.json", "/redoc")
+            path
+            in ("/health", "/healthz", "/readyz", "/docs", "/openapi.json", "/redoc")
             or not path.startswith("/v1/")
             or method == "OPTIONS"
         ):
@@ -93,7 +94,10 @@ class SecurityAndRateLimitMiddleware(BaseHTTPMiddleware):
                         "error": {
                             "code": "RATE_LIMIT_EXCEEDED",
                             "message": "Rate limit exceeded for incident creation (5 req/min)",
-                            "details": {"limit": max_reqs, "window_seconds": window_sec},
+                            "details": {
+                                "limit": max_reqs,
+                                "window_seconds": window_sec,
+                            },
                         }
                     },
                 )
@@ -106,7 +110,10 @@ class SecurityAndRateLimitMiddleware(BaseHTTPMiddleware):
                         "error": {
                             "code": "RATE_LIMIT_EXCEEDED",
                             "message": "Rate limit exceeded for read operations (30 req/min)",
-                            "details": {"limit": max_reqs, "window_seconds": window_sec},
+                            "details": {
+                                "limit": max_reqs,
+                                "window_seconds": window_sec,
+                            },
                         }
                     },
                 )

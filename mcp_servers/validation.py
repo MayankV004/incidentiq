@@ -2,7 +2,14 @@ import os
 import re
 from typing import Any
 
-ALLOWED_SERVICES = {"orders", "payments", "gateway", "fake-external", "fake_external", "redis"}
+ALLOWED_SERVICES = {
+    "orders",
+    "payments",
+    "gateway",
+    "fake-external",
+    "fake_external",
+    "redis",
+}
 ALLOWED_METRICS = [
     "error_rate",
     "latency_p95",
@@ -82,4 +89,3 @@ def clamp_context(context: Any, max_context: int = 20) -> int:
         return max(0, min(ctx, max_context))
     except (ValueError, TypeError):
         return 5
-

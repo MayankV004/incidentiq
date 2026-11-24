@@ -12,19 +12,29 @@ SERVICE_URLS = {
 
 
 def inject_db_pool_exhaustion(enable: bool = True):
-    print(f"[*] {'Enabling' if enable else 'Disabling'} DB Pool Exhaustion on Orders Service...")
-    resp = httpx.post(f"{SERVICE_URLS['orders']}/chaos/pool_exhaust?enabled={str(enable).lower()}")
+    print(
+        f"[*] {'Enabling' if enable else 'Disabling'} DB Pool Exhaustion on Orders Service..."
+    )
+    resp = httpx.post(
+        f"{SERVICE_URLS['orders']}/chaos/pool_exhaust?enabled={str(enable).lower()}"
+    )
     print(f"[Result] HTTP {resp.status_code}: {resp.json()}")
 
 
 def inject_slow_query(enable: bool = True):
-    print(f"[*] {'Enabling' if enable else 'Disabling'} Slow Query simulation on Orders Service...")
-    resp = httpx.post(f"{SERVICE_URLS['orders']}/chaos/slow_query?enabled={str(enable).lower()}")
+    print(
+        f"[*] {'Enabling' if enable else 'Disabling'} Slow Query simulation on Orders Service..."
+    )
+    resp = httpx.post(
+        f"{SERVICE_URLS['orders']}/chaos/slow_query?enabled={str(enable).lower()}"
+    )
     print(f"[Result] HTTP {resp.status_code}: {resp.json()}")
 
 
 def inject_dependency_delay(delay_sec: float = 6.0, failure_rate: float = 0.0):
-    print(f"[*] Setting Fake External delay to {delay_sec}s, failure_rate={failure_rate}...")
+    print(
+        f"[*] Setting Fake External delay to {delay_sec}s, failure_rate={failure_rate}..."
+    )
     resp = httpx.post(
         f"{SERVICE_URLS['fake_external']}/chaos",
         json={"delay_sec": delay_sec, "failure_rate": failure_rate},
@@ -37,7 +47,10 @@ def reset_all():
     try:
         httpx.post(f"{SERVICE_URLS['orders']}/chaos/pool_exhaust?enabled=false")
         httpx.post(f"{SERVICE_URLS['orders']}/chaos/slow_query?enabled=false")
-        httpx.post(f"{SERVICE_URLS['fake_external']}/chaos", json={"delay_sec": 0.0, "failure_rate": 0.0})
+        httpx.post(
+            f"{SERVICE_URLS['fake_external']}/chaos",
+            json={"delay_sec": 0.0, "failure_rate": 0.0},
+        )
         print("[*] Shop restored to healthy baseline.")
     except (httpx.HTTPError, OSError) as e:
         print(f"[Warning] Could not reach all services: {e}", file=sys.stderr)

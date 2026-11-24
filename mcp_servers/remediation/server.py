@@ -62,7 +62,9 @@ def restart_service(service: str, token: str, incident_id: str = "") -> dict[str
 
 
 @server.tool()
-def rollback_deploy(service: str, target_version: str, token: str, incident_id: str = "") -> dict[str, Any]:
+def rollback_deploy(
+    service: str, target_version: str, token: str, incident_id: str = ""
+) -> dict[str, Any]:
     """Rolls back a deployment to a prior git commit / image tag. Requires approved token."""
     if not validate_service(service):
         return {
@@ -92,7 +94,9 @@ def rollback_deploy(service: str, target_version: str, token: str, incident_id: 
 
 
 @server.tool()
-def scale_up(service: str, replicas: int, token: str, incident_id: str = "") -> dict[str, Any]:
+def scale_up(
+    service: str, replicas: int, token: str, incident_id: str = ""
+) -> dict[str, Any]:
     """Scales up the replica count of a service. Requires approved token."""
     if not validate_service(service):
         return {

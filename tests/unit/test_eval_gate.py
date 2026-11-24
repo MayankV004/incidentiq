@@ -19,16 +19,19 @@ def test_eval_thresholds_regression_gate(monkeypatch):
     # Simulate a run with accuracy failure
     with (
         patch("sys.exit") as mock_exit,
-        patch("evals.run_evals.score_run", return_value={
-            "accuracy": 0.0,
-            "groundedness": 0.5,
-            "abstention_correct": False,
-            "evidence_recall": 0.0,
-            "action_safety": 1.0,
-            "cost_usd": 0.004,
-            "latency_ms": 10.0,
-            "steps": 5,
-        }),
+        patch(
+            "evals.run_evals.score_run",
+            return_value={
+                "accuracy": 0.0,
+                "groundedness": 0.5,
+                "abstention_correct": False,
+                "evidence_recall": 0.0,
+                "action_safety": 1.0,
+                "cost_usd": 0.004,
+                "latency_ms": 10.0,
+                "steps": 5,
+            },
+        ),
     ):
         run_benchmark("test-fail-gate", enforce_thresholds=True)
         mock_exit.assert_called_with(1)

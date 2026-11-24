@@ -83,7 +83,9 @@ def test_wrong_action_binding_rejected():
     assert valid is False
     assert "WRONG_ACTION" in reason
 
-    res = rollback_deploy("orders", target_version="v1.0", token=token, incident_id="inc_001")
+    res = rollback_deploy(
+        "orders", target_version="v1.0", token=token, incident_id="inc_001"
+    )
     assert res["success"] is False
     assert "WRONG_ACTION" in res["error"]
 

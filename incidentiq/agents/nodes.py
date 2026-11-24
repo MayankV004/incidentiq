@@ -176,7 +176,9 @@ def _call_llm_for_diagnosis(
 
         # Opt-in Langfuse observability if keys are set in environment
         if os.getenv("LANGFUSE_PUBLIC_KEY") and os.getenv("LANGFUSE_SECRET_KEY"):
-            host = os.getenv("LANGFUSE_HOST") or os.getenv("LANGFUSE_BASE_URL", "https://cloud.langfuse.com")
+            host = os.getenv("LANGFUSE_HOST") or os.getenv(
+                "LANGFUSE_BASE_URL", "https://cloud.langfuse.com"
+            )
             os.environ["LANGFUSE_BASE_URL"] = host
             os.environ["LANGFUSE_HOST"] = host
             if "langfuse" not in litellm.success_callback:
@@ -250,7 +252,9 @@ def _call_llm_for_diagnosis(
         action_data = data.get("suggested_action")
         suggested_action = (
             Action(**action_data)
-            if action_data and action_data.get("type") and action_data.get("type") != "none"
+            if action_data
+            and action_data.get("type")
+            and action_data.get("type") != "none"
             else None
         )
 
@@ -260,7 +264,9 @@ def _call_llm_for_diagnosis(
                 service=data.get("service"),
                 confidence=float(data.get("confidence", 0.5)),
                 reasoning=data.get("reasoning", ""),
-                evidence_ids=data.get("evidence_ids", [e.id for e in telemetry_evidence]),
+                evidence_ids=data.get(
+                    "evidence_ids", [e.id for e in telemetry_evidence]
+                ),
                 suggested_action=suggested_action,
                 abstained=bool(data.get("abstained", False)),
                 abstain_reason=data.get("abstain_reason"),
@@ -316,7 +322,9 @@ def root_cause_agent_node(state: IncidentState) -> dict[str, Any]:
         }
 
     # 2. Deterministic Rule Engine Fallback (Zero-Dependency Offline Replay)
-    telemetry_text = "\n".join([f"[{e.id}] ({e.kind}): {e.summary}" for e in telemetry_evidence])
+    telemetry_text = "\n".join(
+        [f"[{e.id}] ({e.kind}): {e.summary}" for e in telemetry_evidence]
+    )
     evidence_ids = [e.id for e in all_evidence]
 
     category = None
@@ -337,7 +345,9 @@ def root_cause_agent_node(state: IncidentState) -> dict[str, Any]:
             detail="Rollback to previous stable container release",
         )
 
-    elif "redis" in telemetry_text.lower() or "cache_hit_rate" in telemetry_text.lower():
+    elif (
+        "redis" in telemetry_text.lower() or "cache_hit_rate" in telemetry_text.lower()
+    ):
         category = "cache_failure"
         reasoning = f"Cache hit rate dropped to 0% and connection to Redis was refused on '{service}', overwhelming the database."
         suggested_action = Action(
@@ -349,7 +359,10 @@ def root_cause_agent_node(state: IncidentState) -> dict[str, Any]:
     elif (
         "pool limit reached" in telemetry_text.lower()
         or "remaining connection slots" in telemetry_text.lower()
-        or ("db_pool_in_use" in telemetry_text.lower() and "peak value=10" in telemetry_text.lower())
+        or (
+            "db_pool_in_use" in telemetry_text.lower()
+            and "peak value=10" in telemetry_text.lower()
+        )
     ):
         category = "db_pool_exhaustion"
         reasoning = (
@@ -375,7 +388,10 @@ def root_cause_agent_node(state: IncidentState) -> dict[str, Any]:
             detail="Adjust external client timeout and engage circuit-breaker",
         )
 
-    elif "slow_query" in telemetry_text.lower() or "sequential scan" in telemetry_text.lower():
+    elif (
+        "slow_query" in telemetry_text.lower()
+        or "sequential scan" in telemetry_text.lower()
+    ):
         category = "slow_db_query"
         reasoning = f"Severe p95 latency elevation without error spikes indicates slow unindexed database queries on '{service}'."
         suggested_action = Action(
@@ -491,13 +507,17 @@ def budget_exceeded_node(state: IncidentState) -> dict[str, Any]:
     """Triggered when step or cost budget is exhausted."""
     steps = state.get("steps", 0)
     cost_usd = state.get("cost_usd", 0.0)
-    reason = f"Investigation budget exceeded: steps={steps}/12, cost=${cost_usd:.4f}/$0.05"
+    reason = (
+        f"Investigation budget exceeded: steps={steps}/12, cost=${cost_usd:.4f}/$0.05"
+    )
     logger.warning(reason)
 
     hypothesis = state.get("hypothesis")
     if hypothesis:
         hypothesis.abstained = True
-        hypothesis.abstain_reason = f"Budget exceeded ({reason}). Abstaining from action."
+        hypothesis.abstain_reason = (
+            f"Budget exceeded ({reason}). Abstaining from action."
+        )
         hypothesis.suggested_action = None
 
     return {

@@ -144,7 +144,9 @@ def run_benchmark(
             threshold_failures.append(
                 f"Abstention precision {mean_abstain:.1f}% < {thresholds['min_abstention_correct_pct']}%"
             )
-        if summary["action_safety_pct"] < thresholds.get("min_action_safety_pct", 100.0):
+        if summary["action_safety_pct"] < thresholds.get(
+            "min_action_safety_pct", 100.0
+        ):
             threshold_failures.append(
                 f"Action safety {summary['action_safety_pct']:.1f}% < {thresholds['min_action_safety_pct']}%"
             )
@@ -160,7 +162,9 @@ def run_benchmark(
         if enforce_thresholds:
             sys.exit(1)
     else:
-        print("\n[+] All metrics meet or exceed documented thresholds. Regression gate passed.")
+        print(
+            "\n[+] All metrics meet or exceed documented thresholds. Regression gate passed."
+        )
 
     return summary
 

@@ -37,7 +37,9 @@ def test_root_cause_node_llm_fallback_records_error_and_flag(caplog):
     }
 
     with (
-        patch("litellm.completion", side_effect=RuntimeError("Rate limit exceeded 429")),
+        patch(
+            "litellm.completion", side_effect=RuntimeError("Rate limit exceeded 429")
+        ),
         patch.dict("os.environ", {"GROQ_API_KEY": "fake_key"}),
         caplog.at_level(logging.ERROR),
     ):
@@ -57,9 +59,15 @@ def test_db_persistence_errors_surfaced_at_error_level(caplog):
 
     INCIDENTS_DB["test_inc_db_err"] = {"events": []}
     with (
-        patch("incidentiq.api.main.append_event_to_db", side_effect=RuntimeError("Disk full")),
+        patch(
+            "incidentiq.api.main.append_event_to_db",
+            side_effect=RuntimeError("Disk full"),
+        ),
         caplog.at_level(logging.ERROR),
     ):
         broadcast_event("test_inc_db_err", {"id": "ev_1", "type": "test"})
 
-    assert any("DB append_event failed: Disk full" in record.message for record in caplog.records)
+    assert any(
+        "DB append_event failed: Disk full" in record.message
+        for record in caplog.records
+    )

@@ -18,7 +18,9 @@ class HybridRAGEngine:
 
     def _load_and_chunk_documents(self):
         """Reads all runbook and postmortem markdown files and segments them into semantic chunks."""
-        doc_files = glob.glob(os.path.join(self.knowledge_dir, "**", "*.md"), recursive=True)
+        doc_files = glob.glob(
+            os.path.join(self.knowledge_dir, "**", "*.md"), recursive=True
+        )
         for filepath in doc_files:
             filename = os.path.splitext(os.path.basename(filepath))[0]
             with open(filepath, "r", encoding="utf-8") as f:
@@ -42,7 +44,11 @@ class HybridRAGEngine:
                 if not sec:
                     continue
                 header_match = re.search(r"^##\s+(.+)$", sec, re.MULTILINE)
-                section_title = header_match.group(1).lower().replace(" ", "_") if header_match else f"sec_{idx}"
+                section_title = (
+                    header_match.group(1).lower().replace(" ", "_")
+                    if header_match
+                    else f"sec_{idx}"
+                )
                 clean_section = re.sub(r"[^a-z0-9_]", "", section_title)
                 chunk_id = f"doc_{filename}_{clean_section}"
 
@@ -59,7 +65,9 @@ class HybridRAGEngine:
     def _bm25_tokenize(self, text: str) -> list[str]:
         return re.findall(r"\w+", text.lower())
 
-    def _compute_bm25_score(self, query: str, doc_tokens: list[str], avg_dl: float, idf: dict[str, float]) -> float:
+    def _compute_bm25_score(
+        self, query: str, doc_tokens: list[str], avg_dl: float, idf: dict[str, float]
+    ) -> float:
         query_tokens = self._bm25_tokenize(query)
         doc_len = len(doc_tokens)
         score = 0.0
@@ -82,7 +90,11 @@ class HybridRAGEngine:
 
         # 1. Prepare BM25 index
         doc_token_list = [self._bm25_tokenize(chunk.content) for chunk in self.chunks]
-        avg_dl = sum(len(d) for d in doc_token_list) / len(doc_token_list) if doc_token_list else 1.0
+        avg_dl = (
+            sum(len(d) for d in doc_token_list) / len(doc_token_list)
+            if doc_token_list
+            else 1.0
+        )
 
         # Calculate IDF
         idf: dict[str, float] = {}
@@ -91,7 +103,9 @@ class HybridRAGEngine:
         for term in query_terms:
             n_containing = sum(1 for doc in doc_token_list if term in doc)
             if n_containing > 0:
-                idf[term] = math.log((n_docs - n_containing + 0.5) / (n_containing + 0.5) + 1.0)
+                idf[term] = math.log(
+                    (n_docs - n_containing + 0.5) / (n_containing + 0.5) + 1.0
+                )
 
         # 2. Score candidates
         candidate_scores: list[tuple[float, KBChunk]] = []
@@ -100,7 +114,9 @@ class HybridRAGEngine:
             bm25 = self._compute_bm25_score(query, doc_token_list[idx], avg_dl, idf)
 
             # Service boost
-            service_boost = 2.5 if service and (chunk.service.lower() == service.lower()) else 0.0
+            service_boost = (
+                2.5 if service and (chunk.service.lower() == service.lower()) else 0.0
+            )
 
             # Semantic lexical overlap
             q_set = set(self._bm25_tokenize(query))

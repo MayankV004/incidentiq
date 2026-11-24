@@ -19,7 +19,9 @@ class Evidence(BaseModel):
 
 
 class Action(BaseModel):
-    type: Literal["restart_service", "rollback_deploy", "review_config", "scale_up", "none"]
+    type: Literal[
+        "restart_service", "rollback_deploy", "review_config", "scale_up", "none"
+    ]
     target: str
     detail: str
 

@@ -76,7 +76,9 @@ def _get_queue_logger(service_name: str) -> logging.Logger:
     h_shared.setFormatter(fmt)
 
     if _QUEUE_LISTENER is None:
-        _QUEUE_LISTENER = QueueListener(_LOG_QUEUE, h_service, h_shared, respect_handler_level=True)
+        _QUEUE_LISTENER = QueueListener(
+            _LOG_QUEUE, h_service, h_shared, respect_handler_level=True
+        )
         _QUEUE_LISTENER.start()
         atexit.register(_QUEUE_LISTENER.stop)
 
@@ -149,12 +151,16 @@ def setup_telemetry(app: FastAPI, service_name: str):
             status_code = response.status_code
             return response
         except Exception as exc:
-            ERRORS_TOTAL.labels(service=service_name, error_type=type(exc).__name__).inc()
+            ERRORS_TOTAL.labels(
+                service=service_name, error_type=type(exc).__name__
+            ).inc()
             logger.error("unhandled_exception", error=str(exc))
             raise
         finally:
             duration = time.perf_counter() - start_time
-            REQUEST_LATENCY.labels(service=service_name, endpoint=endpoint).observe(duration)
+            REQUEST_LATENCY.labels(service=service_name, endpoint=endpoint).observe(
+                duration
+            )
             REQUESTS_TOTAL.labels(
                 service=service_name,
                 method=method,
@@ -165,11 +171,17 @@ def setup_telemetry(app: FastAPI, service_name: str):
             # Update memory gauge periodically
             try:
                 proc = psutil.Process(os.getpid())
-                MEMORY_MB.labels(service=service_name).set(proc.memory_info().rss / (1024 * 1024))
+                MEMORY_MB.labels(service=service_name).set(
+                    proc.memory_info().rss / (1024 * 1024)
+                )
             except (psutil.Error, OSError):
                 pass
 
-            log_method = logger.info if status_code < 400 else (logger.warning if status_code < 500 else logger.error)
+            log_method = (
+                logger.info
+                if status_code < 400
+                else (logger.warning if status_code < 500 else logger.error)
+            )
             log_method(
                 "http_request_complete",
                 status=status_code,

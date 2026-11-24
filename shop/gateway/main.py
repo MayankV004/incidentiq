@@ -32,7 +32,9 @@ def health():
 @app.post("/checkout")
 async def checkout(req: CheckoutRequest):
     total_amount = sum(item.quantity * item.unit_price for item in req.items)
-    logger.info("checkout_initiated", items_count=len(req.items), total_amount=total_amount)
+    logger.info(
+        "checkout_initiated", items_count=len(req.items), total_amount=total_amount
+    )
 
     async with httpx.AsyncClient(timeout=10.0) as client:
         # Step 1: Call Orders Service to create order
@@ -46,13 +48,22 @@ async def checkout(req: CheckoutRequest):
                 },
             )
             if order_resp.status_code != 200:
-                logger.error("order_creation_failed", status=order_resp.status_code, body=order_resp.text)
-                raise HTTPException(status_code=order_resp.status_code, detail=f"Orders service error: {order_resp.text}")
+                logger.error(
+                    "order_creation_failed",
+                    status=order_resp.status_code,
+                    body=order_resp.text,
+                )
+                raise HTTPException(
+                    status_code=order_resp.status_code,
+                    detail=f"Orders service error: {order_resp.text}",
+                )
             order_data = order_resp.json()
             order_id = order_data["order_id"]
         except httpx.RequestError as exc:
             logger.error("gateway_cannot_reach_orders", error=str(exc))
-            raise HTTPException(status_code=503, detail="Gateway cannot reach Orders Service")
+            raise HTTPException(
+                status_code=503, detail="Gateway cannot reach Orders Service"
+            )
 
         # Step 2: Call Payments Service to process payment
         try:
@@ -66,14 +77,27 @@ async def checkout(req: CheckoutRequest):
                 },
             )
             if payment_resp.status_code != 200:
-                logger.error("payment_processing_failed", status=payment_resp.status_code, body=payment_resp.text)
-                raise HTTPException(status_code=payment_resp.status_code, detail=f"Payments service error: {payment_resp.text}")
+                logger.error(
+                    "payment_processing_failed",
+                    status=payment_resp.status_code,
+                    body=payment_resp.text,
+                )
+                raise HTTPException(
+                    status_code=payment_resp.status_code,
+                    detail=f"Payments service error: {payment_resp.text}",
+                )
             payment_data = payment_resp.json()
         except httpx.RequestError as exc:
             logger.error("gateway_cannot_reach_payments", error=str(exc))
-            raise HTTPException(status_code=503, detail="Gateway cannot reach Payments Service")
+            raise HTTPException(
+                status_code=503, detail="Gateway cannot reach Payments Service"
+            )
 
-    logger.info("checkout_completed_successfully", order_id=order_id, tx_id=payment_data.get("tx_id"))
+    logger.info(
+        "checkout_completed_successfully",
+        order_id=order_id,
+        tx_id=payment_data.get("tx_id"),
+    )
     return {
         "status": "completed",
         "order_id": order_id,
@@ -91,9 +115,12 @@ async def get_order(order_id: str):
                 raise HTTPException(status_code=resp.status_code, detail=resp.text)
             return resp.json()
         except httpx.RequestError as exc:
-            raise HTTPException(status_code=503, detail=f"Gateway cannot reach Orders Service: {exc}")
+            raise HTTPException(
+                status_code=503, detail=f"Gateway cannot reach Orders Service: {exc}"
+            )
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8001)

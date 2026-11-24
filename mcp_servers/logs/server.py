@@ -103,7 +103,11 @@ def search_logs(
     Returned log content is strictly wrapped as untrusted data to mitigate indirect prompt injection.
     """
     if service and not validate_service(service):
-        return [{"error": f"Invalid service '{service}'. Allowed services: {sorted(ALLOWED_SERVICES)}"}]
+        return [
+            {
+                "error": f"Invalid service '{service}'. Allowed services: {sorted(ALLOWED_SERVICES)}"
+            }
+        ]
 
     valid_minutes = clamp_window(minutes)
     capped_limit = clamp_limit(limit, max_limit=50)
@@ -139,7 +143,11 @@ def search_logs(
 def get_error_clusters(service: str, minutes: int = 30) -> list[dict[str, Any]]:
     """Groups similar error log messages into clusters with occurrence count and first/last seen timestamps."""
     if service and not validate_service(service):
-        return [{"error": f"Invalid service '{service}'. Allowed services: {sorted(ALLOWED_SERVICES)}"}]
+        return [
+            {
+                "error": f"Invalid service '{service}'. Allowed services: {sorted(ALLOWED_SERVICES)}"
+            }
+        ]
 
     valid_minutes = clamp_window(minutes)
     raw_logs = load_raw_logs(service, minutes=valid_minutes)
@@ -151,7 +159,11 @@ def get_error_clusters(service: str, minutes: int = 30) -> list[dict[str, Any]]:
 
         msg = log.get("msg", "")
         # Normalize message pattern by removing UUIDs, digits, and specific hashes
-        pattern = re.sub(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", "<UUID>", msg)
+        pattern = re.sub(
+            r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+            "<UUID>",
+            msg,
+        )
         pattern = re.sub(r"\d+", "<N>", pattern)
         pattern = pattern[:150]
 
@@ -172,10 +184,16 @@ def get_error_clusters(service: str, minutes: int = 30) -> list[dict[str, Any]]:
 
 
 @server.tool()
-def get_log_context(service: str, line_id: str = "", before: int = 5, after: int = 5) -> dict[str, Any]:
+def get_log_context(
+    service: str, line_id: str = "", before: int = 5, after: int = 5
+) -> dict[str, Any]:
     """Returns surrounding log context around an error line."""
     if service and not validate_service(service):
-        return {"service": service, "context_lines": [], "error": f"Invalid service '{service}'"}
+        return {
+            "service": service,
+            "context_lines": [],
+            "error": f"Invalid service '{service}'",
+        }
 
     safe_before = clamp_context(before, max_context=20)
     safe_after = clamp_context(after, max_context=20)

@@ -18,7 +18,9 @@ def test_get_sync_database_url_postgresql():
 
 def test_postgresql_engine_instantiation():
     # Verify that create_engine succeeds with psycopg driver without ModuleNotFoundError
-    sync_url = get_sync_database_url("postgresql+asyncpg://user:pass@localhost:5432/test")
+    sync_url = get_sync_database_url(
+        "postgresql+asyncpg://user:pass@localhost:5432/test"
+    )
     engine = create_engine(sync_url)
     assert engine.dialect.name == "postgresql"
     assert engine.dialect.driver == "psycopg"

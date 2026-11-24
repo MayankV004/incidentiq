@@ -40,7 +40,11 @@ async def process_payment(req: PaymentRequest):
                 },
             )
             if resp.status_code != 200:
-                logger.error("external_payment_failed", status_code=resp.status_code, body=resp.text)
+                logger.error(
+                    "external_payment_failed",
+                    status_code=resp.status_code,
+                    body=resp.text,
+                )
                 raise HTTPException(
                     status_code=502,
                     detail=f"Downstream payment gateway error: {resp.text}",
@@ -70,4 +74,5 @@ async def process_payment(req: PaymentRequest):
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8003)

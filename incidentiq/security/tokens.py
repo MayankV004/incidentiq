@@ -53,7 +53,9 @@ def generate_capability_token(
     """Generates an HMAC-SHA256 capability token bound to incident_id and action."""
     signing_secret = secret if secret is not None else get_approval_secret()
     if not signing_secret:
-        raise ValueError("APPROVAL_TOKEN_SECRET must be configured to generate capability tokens.")
+        raise ValueError(
+            "APPROVAL_TOKEN_SECRET must be configured to generate capability tokens."
+        )
 
     now = int(time.time())
     payload: dict[str, Any] = {
@@ -65,7 +67,9 @@ def generate_capability_token(
         "nonce": uuid.uuid4().hex,
     }
 
-    serialized_payload = base64.urlsafe_b64encode(json.dumps(payload, sort_keys=True).encode("utf-8")).decode("utf-8")
+    serialized_payload = base64.urlsafe_b64encode(
+        json.dumps(payload, sort_keys=True).encode("utf-8")
+    ).decode("utf-8")
     signature = hmac.new(
         signing_secret.encode("utf-8"),
         serialized_payload.encode("utf-8"),
@@ -128,7 +132,10 @@ def verify_capability_token(
     # 3. Check expiration
     now = time.time()
     if now > payload.get("exp", 0):
-        return False, "EXPIRED_TOKEN: Approval token has exceeded its 15-minute validity window"
+        return (
+            False,
+            "EXPIRED_TOKEN: Approval token has exceeded its 15-minute validity window",
+        )
 
     # 4. Check incident binding if specified
     if expected_incident_id and payload.get("incident_id") != expected_incident_id:
@@ -154,7 +161,10 @@ def verify_capability_token(
     # 7. Check replay (single-use)
     thash = hash_token(token)
     if thash in _CONSUMED_TOKEN_HASHES:
-        return False, "REPLAY_DETECTED: Single-use capability token has already been consumed"
+        return (
+            False,
+            "REPLAY_DETECTED: Single-use capability token has already been consumed",
+        )
 
     if consume:
         _CONSUMED_TOKEN_HASHES.add(thash)

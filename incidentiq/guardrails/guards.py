@@ -102,17 +102,19 @@ class GuardrailManager:
         valid_evidence_ids = {e.id for e in evidence_list}
 
         # Check citations
-        missing_ids = [eid for eid in hypothesis.evidence_ids if eid not in valid_evidence_ids]
+        missing_ids = [
+            eid for eid in hypothesis.evidence_ids if eid not in valid_evidence_ids
+        ]
         if missing_ids:
             flags.append(f"ungrounded_citations_removed: {missing_ids}")
-            hypothesis.evidence_ids = [eid for eid in hypothesis.evidence_ids if eid in valid_evidence_ids]
+            hypothesis.evidence_ids = [
+                eid for eid in hypothesis.evidence_ids if eid in valid_evidence_ids
+            ]
 
         # Enforce Groundedness & Confidence Thresholds
         if len(hypothesis.evidence_ids) == 0 and not hypothesis.abstained:
             hypothesis.abstained = True
-            hypothesis.abstain_reason = (
-                "Insufficient evidence collected: no gathered metrics or logs support a definitive root cause."
-            )
+            hypothesis.abstain_reason = "Insufficient evidence collected: no gathered metrics or logs support a definitive root cause."
             hypothesis.suggested_action = None
             flags.append("abstained_due_to_zero_evidence")
 

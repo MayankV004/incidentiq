@@ -17,7 +17,7 @@ ACTIVE_DB_CONNECTIONS = 0
 FORCE_DB_POOL_EXHAUSTION = False
 SIMULATE_SLOW_QUERY = False
 ORDERS_CACHE = {}  # In-memory Redis simulation fallback
-ORDERS_DB = {}     # In-memory Postgres simulation fallback
+ORDERS_DB = {}  # In-memory Postgres simulation fallback
 
 
 class OrderItem(BaseModel):
@@ -51,8 +51,15 @@ def toggle_pool_exhaust(enabled: bool = True):
     FORCE_DB_POOL_EXHAUSTION = enabled
     ACTIVE_DB_CONNECTIONS = MAX_DB_POOL_SIZE if enabled else 2
     DB_POOL_IN_USE.labels(service="orders").set(ACTIVE_DB_CONNECTIONS)
-    logger.warning("chaos_db_pool_updated", forced_exhaustion=enabled, connections=ACTIVE_DB_CONNECTIONS)
-    return {"forced_exhaustion": FORCE_DB_POOL_EXHAUSTION, "active_connections": ACTIVE_DB_CONNECTIONS}
+    logger.warning(
+        "chaos_db_pool_updated",
+        forced_exhaustion=enabled,
+        connections=ACTIVE_DB_CONNECTIONS,
+    )
+    return {
+        "forced_exhaustion": FORCE_DB_POOL_EXHAUSTION,
+        "active_connections": ACTIVE_DB_CONNECTIONS,
+    }
 
 
 @app.post("/chaos/slow_query")
@@ -88,7 +95,11 @@ async def create_order(req: CreateOrderRequest):
     try:
         # Simulate slow query if enabled
         if SIMULATE_SLOW_QUERY:
-            logger.warning("slow_query_execution", query="SELECT * FROM orders WHERE ...", duration_ms=4200)
+            logger.warning(
+                "slow_query_execution",
+                query="SELECT * FROM orders WHERE ...",
+                duration_ms=4200,
+            )
             await asyncio.sleep(3.5)
 
         order_id = f"ord_{uuid.uuid4().hex[:8]}"
@@ -103,7 +114,9 @@ async def create_order(req: CreateOrderRequest):
         ORDERS_CACHE[order_id] = order  # update cache
         CACHE_HIT_RATE.labels(service="orders").set(0.92)
 
-        logger.info("order_created_successfully", order_id=order_id, amount=req.total_amount)
+        logger.info(
+            "order_created_successfully", order_id=order_id, amount=req.total_amount
+        )
         return order
     finally:
         ACTIVE_DB_CONNECTIONS = max(0, ACTIVE_DB_CONNECTIONS - 1)
@@ -128,4 +141,5 @@ async def get_order(order_id: str):
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8002)

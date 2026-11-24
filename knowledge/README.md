@@ -8,13 +8,17 @@ This directory houses the curated operational runbooks and past incident postmor
 
 ```
 knowledge/
-├── runbooks/                  # Actionable operational procedure manuals
-│   ├── orders_db_pool.md      # DB connection pool sizing & leak troubleshooting
-│   ├── payments_timeout.md    # Downstream payment gateway timeout mitigation
-│   ├── memory_leaks.md        # Heap surge identification and graceful recycling
-│   └── slow_queries.md        # Unindexed query detection and explain analyze
-└── postmortems/               # Historical incident reports & lessons learned
-    └── incident_104_db_pool_leak.md # Case study on connection pool starvation
+├── runbooks/                            # Actionable operational procedure manuals
+│   ├── orders_db_pool.md                # DB connection pool sizing & leak troubleshooting
+│   ├── payments_timeout.md              # Downstream payment gateway timeout mitigation
+│   ├── memory_leaks.md                  # Heap surge identification and graceful recycling
+│   ├── slow_queries.md                  # Unindexed query detection and explain analyze
+│   ├── cache_failure.md                 # Redis cache connection drops & eviction stampedes
+│   └── bad_deploy_config.md             # CrashLoops from missing environment variables / config errors
+└── postmortems/                         # Historical incident reports & lessons learned
+    ├── incident_104_db_pool_leak.md     # P0: Orders connection leak caused by retry bug
+    ├── incident_108_cache_eviction_storm.md # P1: Redis limit reached triggering PostgreSQL stampede
+    └── incident_112_bad_deploy_config.md    # P0: Payments CrashLoop from missing env secret in release
 ```
 
 ---
