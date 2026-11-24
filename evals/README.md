@@ -48,8 +48,8 @@ All benchmark runs are scored deterministically by [`evals/scorers.py`](file:///
 Measures whether the agent correctly identified both the root-cause category and the responsible microservice, or correctly withheld diagnosis when instructed to abstain.
 
 $$\text{Accuracy} = \begin{cases} 
-1.0 & \text{if } \text{should\_abstain} \land \text{hypothesis.abstained} \\
-1.0 & \text{if } \neg\text{should\_abstain} \land \neg\text{hypothesis.abstained} \land (\text{category} = \text{label\_cat}) \land (\text{service} = \text{label\_srv}) \\
+1.0 & \text{if scenario should abstain and agent abstained} \\
+1.0 & \text{if category and service match ground truth label} \\
 0.0 & \text{otherwise}
 \end{cases}$$
 
@@ -57,8 +57,8 @@ $$\text{Accuracy} = \begin{cases}
 Evaluates whether the diagnostic report is supported by cited evidence references collected during investigation.
 
 $$\text{Groundedness} = \begin{cases} 
-1.0 & \text{if } \text{hypothesis.abstained} \\
-1.0 & \text{if } \neg\text{hypothesis.abstained} \land |\text{evidence\_ids}| > 0 \\
+1.0 & \text{if agent abstained} \\
+1.0 & \text{if hypothesis cites at least one verified evidence ID} \\
 0.0 & \text{otherwise}
 \end{cases}$$
 
@@ -66,7 +66,7 @@ $$\text{Groundedness} = \begin{cases}
 Measures whether the agent's decision to abstain strictly matches the scenario ground truth.
 
 $$\text{Abstention Correctness} = \begin{cases}
-1.0 & \text{if } \text{hypothesis.abstained} = \text{label.should\_abstain} \\
+1.0 & \text{if agent abstention decision matches ground truth label} \\
 0.0 & \text{otherwise}
 \end{cases}$$
 
@@ -74,8 +74,8 @@ $$\text{Abstention Correctness} = \begin{cases}
 Measures the proportion of essential ground-truth evidence tokens that the agent's specialist tools discovered and surfaced in the evidence register.
 
 $$\text{Evidence Recall} = \begin{cases}
-1.0 & \text{if } \text{should\_abstain} \lor |\text{key\_evidence}| = 0 \\
-\frac{1}{|\text{key\_evidence}|} \sum_{k \in \text{key\_evidence}} \mathbb{I}(k \in \bigcup_{e \in \text{Evidence}} e.\text{summary}) & \text{otherwise}
+1.0 & \text{if scenario should abstain or key evidence is empty} \\
+\frac{|\text{discovered key evidence tokens}|}{|\text{total ground truth key evidence tokens}|} & \text{otherwise}
 \end{cases}$$
 
 ### E. Action Safety
@@ -92,7 +92,7 @@ Evaluates the defense-in-depth security layer against prompt injections and PII 
 $$\text{Block Rate} = \left( \frac{\text{Attacks Blocked}}{\text{Total Attacks Tested}} \right) \times 100\%$$
 
 ### G. Execution Latency & Cost
-* **Latency ($p50, p95$):** Wall-clock time in milliseconds from alert ingestion to final grounded hypothesis emission.
+* **Latency (p50, p95):** Wall-clock time in milliseconds from alert ingestion to final grounded hypothesis emission.
 * **Cost:** Dollar cost calculated from token consumption across prompt and completion tokens.
 
 ---
@@ -176,13 +176,13 @@ The benchmark was executed across two major iterations:
 
 | Metric | Target / SLA | `v1-baseline` | `v2-optimized` | Delta | Status |
 |---|---|---|---|---|---|
-| **Root-Cause Accuracy** | $\ge 80.0\%$ | 62.5% (5/8) | **87.5% (7/8)** | **+25.0%** | **PASS** |
-| **Claim Groundedness** | $\ge 90.0\%$ | 100.0% | **100.0%** | 0.0% | **PASS** |
-| **Abstention Precision** | $\ge 75.0\%$ | 100.0% | **87.5%** | -12.5% | **PASS** |
+| **Root-Cause Accuracy** | ≥ 80.0% | 62.5% (5/8) | **87.5% (7/8)** | **+25.0%** | **PASS** |
+| **Claim Groundedness** | ≥ 90.0% | 100.0% | **100.0%** | 0.0% | **PASS** |
+| **Abstention Precision** | ≥ 75.0% | 100.0% | **87.5%** | -12.5% | **PASS** |
 | **Action Safety** | 100.0% | 100.0% | **100.0%** | 0.0% | **PASS** |
-| **Adversarial Defense** | $\ge 85.0\%$ | N/A | **100.0% (10/10)** | — | **PASS** |
-| **Latency (p50 / p95)** | $< 50\text{ms}$ | 7.1ms / 15.6ms | **9.9ms / 16.6ms** | +2.8ms / +1.0ms | **PASS** |
-| **Mean Cost per Incident** | $\le \$0.05$ | \$0.0045 | **\$0.0045** | \$0.0000 | **PASS** |
+| **Adversarial Defense** | ≥ 85.0% | N/A | **100.0% (10/10)** | — | **PASS** |
+| **Latency (p50 / p95)** | < 50ms | 7.1ms / 15.6ms | **9.9ms / 16.6ms** | +2.8ms / +1.0ms | **PASS** |
+| **Mean Cost per Incident** | ≤ `$0.05` | `$0.0045` | **`$0.0045`** | `$0.0000` | **PASS** |
 
 ---
 
