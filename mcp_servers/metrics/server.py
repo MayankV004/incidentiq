@@ -1,6 +1,7 @@
 import json
 import os
 import statistics
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -9,6 +10,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp_servers.validation import (
     ALLOWED_METRICS,
     ALLOWED_SERVICES,
+    clamp_window,
     get_safe_scenario_path,
     sanitize_promql_service,
     validate_service,
@@ -29,6 +31,22 @@ def list_metrics(service: str) -> list[str]:
     return ALLOWED_METRICS
 
 
+def parse_metric_ts(ts_val: Any) -> datetime | None:
+    """Parses metric timestamp safely into a timezone-aware datetime."""
+    if not ts_val:
+        return None
+    try:
+        if isinstance(ts_val, (int, float)):
+            return datetime.fromtimestamp(ts_val, tz=UTC)
+        clean = str(ts_val).replace("Z", "+00:00")
+        dt = datetime.fromisoformat(clean)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        return dt
+    except (ValueError, TypeError):
+        return None
+
+
 @server.tool()
 def query_metric(service: str, metric: str, minutes: int = 30) -> dict[str, Any]:
     """Queries a specific metric for a service over a time window (minutes).
@@ -41,6 +59,7 @@ def query_metric(service: str, metric: str, minutes: int = 30) -> dict[str, Any]
     if metric not in ALLOWED_METRICS:
         return {"error": f"Metric '{metric}' is not allowed. Allowed metrics: {ALLOWED_METRICS}"}
 
+    valid_minutes = clamp_window(minutes, max_minutes=180)
     data_mode = os.getenv("DATA_MODE", DATA_MODE)
     scenario_id = os.getenv("SCENARIO_ID", SCENARIO_ID)
 
@@ -73,6 +92,17 @@ def query_metric(service: str, metric: str, minutes: int = 30) -> dict[str, Any]
         except (httpx.HTTPError, OSError) as e:
             return {"error": f"Prometheus query failed: {e}", "points": []}
 
+    if points:
+        parsed = [(parse_metric_ts(p.get("timestamp")), p) for p in points]
+        valid_ts = [t for t, _ in parsed if t is not None]
+        if valid_ts:
+            if data_mode == "replay":
+                max_ts = max(valid_ts)
+            else:
+                max_ts = datetime.now(UTC)
+            cutoff = max_ts - timedelta(minutes=valid_minutes)
+            points = [p for t, p in parsed if t is None or t >= cutoff]
+
     values = [float(p.get("value", 0.0)) for p in points]
     if not values:
         return {
@@ -91,7 +121,7 @@ def query_metric(service: str, metric: str, minutes: int = 30) -> dict[str, Any]
             "mean": round(statistics.mean(values), 4),
             "count": len(values),
         },
-        "points": points[-30:],  # return latest 30 points
+        "points": points[-60:],  # return up to 60 downsampled points
     }
 
 

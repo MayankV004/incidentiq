@@ -1,5 +1,6 @@
 import os
 import re
+from typing import Any
 
 ALLOWED_SERVICES = {"orders", "payments", "gateway", "fake-external", "fake_external", "redis"}
 ALLOWED_METRICS = [
@@ -54,3 +55,31 @@ def sanitize_promql_service(service: str) -> str:
     if not validate_service(service):
         raise ValueError(f"Invalid service '{service}' for PromQL query")
     return re.sub(r"[^a-zA-Z0-9_-]", "", service)
+
+
+def clamp_window(minutes: Any, max_minutes: int = 180) -> int:
+    """Clamps time window between 1 and max_minutes."""
+    try:
+        m = int(minutes)
+        return max(1, min(m, max_minutes))
+    except (ValueError, TypeError):
+        return 30
+
+
+def clamp_limit(limit: Any, max_limit: int = 50) -> int:
+    """Clamps query limit between 1 and max_limit."""
+    try:
+        lim = int(limit)
+        return max(1, min(lim, max_limit))
+    except (ValueError, TypeError):
+        return max_limit
+
+
+def clamp_context(context: Any, max_context: int = 20) -> int:
+    """Clamps log context lines between 0 and max_context."""
+    try:
+        ctx = int(context)
+        return max(0, min(ctx, max_context))
+    except (ValueError, TypeError):
+        return 5
+

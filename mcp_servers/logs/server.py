@@ -1,12 +1,16 @@
 import json
 import os
 import re
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 
 from mcp_servers.validation import (
     ALLOWED_SERVICES,
+    clamp_context,
+    clamp_limit,
+    clamp_window,
     get_safe_log_path,
     get_safe_scenario_path,
     validate_service,
@@ -23,7 +27,21 @@ def wrap_untrusted(text: str) -> str:
     return f"<untrusted_data>\n{text}\n</untrusted_data>"
 
 
-def load_raw_logs(service: str) -> list[dict[str, Any]]:
+def parse_iso_ts(ts_str: Any) -> datetime | None:
+    """Parses ISO timestamp string safely into a timezone-aware datetime."""
+    if not ts_str or not isinstance(ts_str, str):
+        return None
+    try:
+        clean = ts_str.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(clean)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        return dt
+    except (ValueError, TypeError):
+        return None
+
+
+def load_raw_logs(service: str, minutes: int | None = None) -> list[dict[str, Any]]:
     if service and not validate_service(service):
         return []
 
@@ -51,9 +69,24 @@ def load_raw_logs(service: str) -> list[dict[str, Any]]:
                 for line in f:
                     if line.strip():
                         try:
-                            logs.append(json.loads(line))
+                            entry = json.loads(line)
+                            if not service or entry.get("service") == service:
+                                logs.append(entry)
                         except json.JSONDecodeError:
                             continue
+
+    if minutes is not None and logs:
+        valid_minutes = clamp_window(minutes)
+        parsed = [(parse_iso_ts(l.get("ts")), l) for l in logs]
+        valid_ts = [t for t, _ in parsed if t is not None]
+        if valid_ts:
+            if data_mode == "replay":
+                max_ts = max(valid_ts)
+            else:
+                max_ts = datetime.now(UTC)
+            cutoff = max_ts - timedelta(minutes=valid_minutes)
+            logs = [l for t, l in parsed if t is None or t >= cutoff]
+
     return logs
 
 
@@ -71,7 +104,11 @@ def search_logs(
     """
     if service and not validate_service(service):
         return [{"error": f"Invalid service '{service}'. Allowed services: {sorted(ALLOWED_SERVICES)}"}]
-    raw_logs = load_raw_logs(service)
+
+    valid_minutes = clamp_window(minutes)
+    capped_limit = clamp_limit(limit, max_limit=50)
+
+    raw_logs = load_raw_logs(service, minutes=valid_minutes)
     results = []
 
     for log in raw_logs:
@@ -92,7 +129,7 @@ def search_logs(
                 "request_id": log.get("request_id"),
             }
         )
-        if len(results) >= limit:
+        if len(results) >= capped_limit:
             break
 
     return results
@@ -103,7 +140,9 @@ def get_error_clusters(service: str, minutes: int = 30) -> list[dict[str, Any]]:
     """Groups similar error log messages into clusters with occurrence count and first/last seen timestamps."""
     if service and not validate_service(service):
         return [{"error": f"Invalid service '{service}'. Allowed services: {sorted(ALLOWED_SERVICES)}"}]
-    raw_logs = load_raw_logs(service)
+
+    valid_minutes = clamp_window(minutes)
+    raw_logs = load_raw_logs(service, minutes=valid_minutes)
     clusters: dict[str, dict[str, Any]] = {}
 
     for log in raw_logs:
@@ -137,10 +176,36 @@ def get_log_context(service: str, line_id: str = "", before: int = 5, after: int
     """Returns surrounding log context around an error line."""
     if service and not validate_service(service):
         return {"service": service, "context_lines": [], "error": f"Invalid service '{service}'"}
+
+    safe_before = clamp_context(before, max_context=20)
+    safe_after = clamp_context(after, max_context=20)
+
     raw_logs = load_raw_logs(service)
+    target_idx = None
+
+    if line_id:
+        line_clean = str(line_id).strip()
+        for idx, entry in enumerate(raw_logs):
+            if (
+                entry.get("request_id") == line_clean
+                or entry.get("ts") == line_clean
+                or line_clean in entry.get("msg", "")
+                or str(idx) == line_clean
+            ):
+                target_idx = idx
+                break
+
+    if target_idx is not None:
+        start_idx = max(0, target_idx - safe_before)
+        end_idx = min(len(raw_logs), target_idx + safe_after + 1)
+        slice_logs = raw_logs[start_idx:end_idx]
+    else:
+        slice_logs = raw_logs[: (safe_before + safe_after)]
+
     return {
         "service": service,
-        "context_lines": [wrap_untrusted(l.get("msg", "")) for l in raw_logs[: (before + after)]],
+        "target_id": line_id,
+        "context_lines": [wrap_untrusted(l.get("msg", "")) for l in slice_logs],
     }
 
 
