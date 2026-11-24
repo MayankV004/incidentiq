@@ -61,6 +61,14 @@ CACHE_HIT_RATE = Gauge(
 
 _LOG_QUEUE: queue.Queue = queue.Queue()
 _QUEUE_LISTENER: QueueListener | None = None
+_SERVICE_LISTENERS: dict[str, tuple[queue.Queue, QueueListener]] = {}
+
+
+def _stop_listener(listener: QueueListener) -> None:
+    if getattr(listener, "_thread", None) is not None:
+        listener.stop()
+    for handler in listener.handlers:
+        handler.close()
 
 
 def _get_queue_logger(service_name: str) -> logging.Logger:
@@ -69,38 +77,58 @@ def _get_queue_logger(service_name: str) -> logging.Logger:
     log_file_path = f"logs/{service_name}.log"
     shared_log_path = "logs/shop.log"
 
-    h_service = RotatingFileHandler(
-        log_file_path, maxBytes=5 * 1024 * 1024, backupCount=3
-    )
-    h_shared = RotatingFileHandler(
-        shared_log_path, maxBytes=5 * 1024 * 1024, backupCount=3
-    )
-    fmt = logging.Formatter("%(message)s")
-    h_service.setFormatter(fmt)
-    h_shared.setFormatter(fmt)
-
-    if _QUEUE_LISTENER is None:
-        _QUEUE_LISTENER = QueueListener(
-            _LOG_QUEUE, h_service, h_shared, respect_handler_level=True
+    existing = _SERVICE_LISTENERS.get(service_name)
+    if (
+        existing is not None
+        and os.path.exists(log_file_path)
+        and os.path.exists(shared_log_path)
+    ):
+        service_queue, listener = existing
+    else:
+        if existing is not None:
+            _stop_listener(existing[1])
+        service_queue = queue.Queue()
+        h_service = RotatingFileHandler(
+            log_file_path, maxBytes=5 * 1024 * 1024, backupCount=3
         )
-        _QUEUE_LISTENER.start()
-        atexit.register(_QUEUE_LISTENER.stop)
+        h_shared = RotatingFileHandler(
+            shared_log_path, maxBytes=5 * 1024 * 1024, backupCount=3
+        )
+        fmt = logging.Formatter("%(message)s")
+        h_service.setFormatter(fmt)
+        h_shared.setFormatter(fmt)
+
+        listener = QueueListener(
+            service_queue, h_service, h_shared, respect_handler_level=True
+        )
+        listener.start()
+        atexit.register(_stop_listener, listener)
+        _SERVICE_LISTENERS[service_name] = (service_queue, listener)
+
+    _QUEUE_LISTENER = listener
 
     logger = logging.getLogger(f"shop.{service_name}")
     logger.setLevel(logging.INFO)
     logger.propagate = False
-    if not logger.handlers:
-        logger.addHandler(QueueHandler(_LOG_QUEUE))
+    has_current_queue = any(
+        isinstance(h, QueueHandler) and getattr(h, "queue", None) is service_queue
+        for h in logger.handlers
+    )
+    if not has_current_queue:
+        for h in list(logger.handlers):
+            logger.removeHandler(h)
+        logger.addHandler(QueueHandler(service_queue))
     return logger
 
 
 def configure_logging(service_name: str) -> structlog.BoundLogger:
     """Configures non-blocking structured JSON logging writing via a background QueueListener."""
-    bg_logger = _get_queue_logger(service_name)
+    _get_queue_logger(service_name)
 
     def file_output_processor(logger, method_name, event_dict):
+        target_service = str(event_dict.get("service") or service_name)
         line = json.dumps(event_dict)
-        bg_logger.info(line)
+        _get_queue_logger(target_service).info(line)
         return event_dict
 
     structlog.configure(

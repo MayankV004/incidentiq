@@ -44,6 +44,9 @@ jobs:
         run: uv run python evals/redteam/run_redteam.py
 
       - name: Run IncidentBench Replay Evaluation with Thresholds Gate
+        env:
+          APPROVAL_TOKEN_SECRET: ci-replay-eval-approval-secret
+          API_KEY: ci-replay-eval-api-key
         run: PYTHONPATH=. uv run python evals/run_evals.py --name ci-eval
 
   ui:
