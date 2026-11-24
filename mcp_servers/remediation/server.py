@@ -4,6 +4,7 @@ from typing import Any
 from mcp.server.mcpserver import MCPServer
 
 from incidentiq.security.tokens import get_approval_secret, verify_capability_token
+from mcp_servers.validation import ALLOWED_SERVICES, validate_service
 
 server = MCPServer("remediation_server")
 
@@ -34,6 +35,11 @@ def restart_service(service: str, token: str, incident_id: str = "") -> dict[str
     MANDATORY REQUIREMENT: Requires an approved single-use token from the on-call engineer.
     Executes in safe dry-run mode.
     """
+    if not validate_service(service):
+        return {
+            "success": False,
+            "error": f"INVALID_SERVICE: Service '{service}' is not allowed. Allowed services: {sorted(ALLOWED_SERVICES)}",
+        }
     valid, reason = verify_approval_token(
         token=token,
         expected_action="restart_service",
@@ -58,6 +64,11 @@ def restart_service(service: str, token: str, incident_id: str = "") -> dict[str
 @server.tool()
 def rollback_deploy(service: str, target_version: str, token: str, incident_id: str = "") -> dict[str, Any]:
     """Rolls back a deployment to a prior git commit / image tag. Requires approved token."""
+    if not validate_service(service):
+        return {
+            "success": False,
+            "error": f"INVALID_SERVICE: Service '{service}' is not allowed. Allowed services: {sorted(ALLOWED_SERVICES)}",
+        }
     valid, reason = verify_approval_token(
         token=token,
         expected_action="rollback_deploy",
@@ -83,6 +94,11 @@ def rollback_deploy(service: str, target_version: str, token: str, incident_id: 
 @server.tool()
 def scale_up(service: str, replicas: int, token: str, incident_id: str = "") -> dict[str, Any]:
     """Scales up the replica count of a service. Requires approved token."""
+    if not validate_service(service):
+        return {
+            "success": False,
+            "error": f"INVALID_SERVICE: Service '{service}' is not allowed. Allowed services: {sorted(ALLOWED_SERVICES)}",
+        }
     valid, reason = verify_approval_token(
         token=token,
         expected_action="scale_up",
@@ -110,6 +126,11 @@ def review_config(
     service: str, parameter: str, proposed_value: str, token: str, incident_id: str = ""
 ) -> dict[str, Any]:
     """Prepares and validates a configuration change recommendation. Requires approved token."""
+    if not validate_service(service):
+        return {
+            "success": False,
+            "error": f"INVALID_SERVICE: Service '{service}' is not allowed. Allowed services: {sorted(ALLOWED_SERVICES)}",
+        }
     valid, reason = verify_approval_token(
         token=token,
         expected_action="review_config",

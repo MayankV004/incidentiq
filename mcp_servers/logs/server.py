@@ -5,6 +5,13 @@ from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 
+from mcp_servers.validation import (
+    ALLOWED_SERVICES,
+    get_safe_log_path,
+    get_safe_scenario_path,
+    validate_service,
+)
+
 server = MCPServer("logs_server")
 
 DATA_MODE = os.getenv("DATA_MODE", "replay")
@@ -17,14 +24,17 @@ def wrap_untrusted(text: str) -> str:
 
 
 def load_raw_logs(service: str) -> list[dict[str, Any]]:
+    if service and not validate_service(service):
+        return []
+
     data_mode = os.getenv("DATA_MODE", DATA_MODE)
     scenario_id = os.getenv("SCENARIO_ID", SCENARIO_ID)
 
     logs: list[dict[str, Any]] = []
     if data_mode == "replay":
-        scenario_path = os.path.join("scenarios", scenario_id, "logs.jsonl")
-        if os.path.exists(scenario_path):
-            with open(scenario_path) as f:
+        safe_path = get_safe_scenario_path(scenario_id, "logs.jsonl")
+        if safe_path and os.path.exists(safe_path):
+            with open(safe_path) as f:
                 for line in f:
                     if line.strip():
                         try:
@@ -35,8 +45,8 @@ def load_raw_logs(service: str) -> list[dict[str, Any]]:
                             continue
     else:
         # Live log file
-        log_file = f"logs/{service}.log" if service else "logs/shop.log"
-        if os.path.exists(log_file):
+        log_file = get_safe_log_path(service)
+        if log_file and os.path.exists(log_file):
             with open(log_file) as f:
                 for line in f:
                     if line.strip():
@@ -59,6 +69,8 @@ def search_logs(
 
     Returned log content is strictly wrapped as untrusted data to mitigate indirect prompt injection.
     """
+    if service and not validate_service(service):
+        return [{"error": f"Invalid service '{service}'. Allowed services: {sorted(ALLOWED_SERVICES)}"}]
     raw_logs = load_raw_logs(service)
     results = []
 
@@ -89,6 +101,8 @@ def search_logs(
 @server.tool()
 def get_error_clusters(service: str, minutes: int = 30) -> list[dict[str, Any]]:
     """Groups similar error log messages into clusters with occurrence count and first/last seen timestamps."""
+    if service and not validate_service(service):
+        return [{"error": f"Invalid service '{service}'. Allowed services: {sorted(ALLOWED_SERVICES)}"}]
     raw_logs = load_raw_logs(service)
     clusters: dict[str, dict[str, Any]] = {}
 
@@ -121,6 +135,8 @@ def get_error_clusters(service: str, minutes: int = 30) -> list[dict[str, Any]]:
 @server.tool()
 def get_log_context(service: str, line_id: str = "", before: int = 5, after: int = 5) -> dict[str, Any]:
     """Returns surrounding log context around an error line."""
+    if service and not validate_service(service):
+        return {"service": service, "context_lines": [], "error": f"Invalid service '{service}'"}
     raw_logs = load_raw_logs(service)
     return {
         "service": service,

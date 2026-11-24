@@ -6,16 +6,15 @@ from typing import Any
 import httpx
 from mcp.server.mcpserver import MCPServer
 
-server = MCPServer("metrics_server")
+from mcp_servers.validation import (
+    ALLOWED_METRICS,
+    ALLOWED_SERVICES,
+    get_safe_scenario_path,
+    sanitize_promql_service,
+    validate_service,
+)
 
-ALLOWED_METRICS = [
-    "error_rate",
-    "latency_p95",
-    "request_rate",
-    "memory_mb",
-    "db_pool_in_use",
-    "cache_hit_rate",
-]
+server = MCPServer("metrics_server")
 
 PROMETHEUS_URL = os.getenv("PROMETHEUS_URL", "http://localhost:9090")
 DATA_MODE = os.getenv("DATA_MODE", "replay")
@@ -25,6 +24,8 @@ SCENARIO_ID = os.getenv("SCENARIO_ID", "001_orders_db_pool_exhaustion")
 @server.tool()
 def list_metrics(service: str) -> list[str]:
     """Returns the list of available allowed metric names for a given service."""
+    if service and not validate_service(service):
+        return []
     return ALLOWED_METRICS
 
 
@@ -34,6 +35,9 @@ def query_metric(service: str, metric: str, minutes: int = 30) -> dict[str, Any]
 
     Returns summary stats (min, max, mean, count) and downsampled points.
     """
+    if not validate_service(service):
+        return {"error": f"Invalid service '{service}'. Allowed services: {sorted(ALLOWED_SERVICES)}"}
+
     if metric not in ALLOWED_METRICS:
         return {"error": f"Metric '{metric}' is not allowed. Allowed metrics: {ALLOWED_METRICS}"}
 
@@ -43,20 +47,21 @@ def query_metric(service: str, metric: str, minutes: int = 30) -> dict[str, Any]
     points: list[dict[str, Any]] = []
 
     if data_mode == "replay":
-        scenario_path = os.path.join("scenarios", scenario_id, "metrics.json")
-        if os.path.exists(scenario_path):
-            with open(scenario_path) as f:
+        safe_path = get_safe_scenario_path(scenario_id, "metrics.json")
+        if safe_path and os.path.exists(safe_path):
+            with open(safe_path) as f:
                 raw = json.load(f)
                 points = raw.get("metrics", {}).get(metric, [])
         else:
-            return {"error": f"Replay scenario '{scenario_id}' metrics not found at {scenario_path}"}
+            return {"error": f"Replay scenario '{scenario_id}' metrics not found or invalid path"}
     else:
         # Live Prometheus query fallback
         try:
+            clean_srv = sanitize_promql_service(service)
             resp = httpx.get(
                 f"{PROMETHEUS_URL}/api/v1/query_range",
                 params={
-                    "query": f"shop_{metric}{{service='{service}'}}",
+                    "query": f"shop_{metric}{{service='{clean_srv}'}}",
                     "step": "15s",
                 },
                 timeout=3.0,
