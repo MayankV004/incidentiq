@@ -50,12 +50,79 @@ This log tracks every finding verified, reproduced, and remediated on the `fix/a
 | **AUD-13** | Dependencies unpinned in pyproject.toml | Yes (dependencies had `>=` unpinned versions) | Incomplete dependency lockdown in build spec | Pinned all dependencies in `pyproject.toml` to exact versions (`==`) matching `uv.lock` | `uv sync` lock verification | `871d878` |
 | **AUD-14** | Tool allow-lists not covered by automated contract tests | Yes (`tests/contract/` was empty) | Missing contract test assertions for specialist agent tool allow-lists | Added `incidentiq/agents/tool_registry.py` and contract tests verifying exact Document 06 tool set equality and forbidden tool denial | `tests/contract/test_tool_allowlists.py` (2 contract tests) | `45bbe61` |
 | **CR-03** | Synchronous blocking file I/O executed inside async telemetry middleware | Yes (`with open(...)` synchronous disk writes inside logging processor) | Per-request file opens/writes blocked Python asyncio event loop | Implemented asynchronous logging with `QueueHandler` and background `QueueListener` daemon thread | `tests/unit/test_telemetry.py` (1 unit test) | `ea298af` |
-| **CR-07** | Synchronous SQLAlchemy queries executed inside async FastAPI endpoints | Yes (`stream_incident` called synchronous DB getter on event loop) | Blocking DB operations starved the asyncio event loop during streaming connections | Wrapped synchronous DB lookup in `starlette.concurrency.run_in_threadpool` | `test_stream_incident` in API test suite | `[CR-07]` |
+| **CR-07** | Synchronous SQLAlchemy queries executed inside async FastAPI endpoints | Yes (`stream_incident` called synchronous DB getter on event loop) | Blocking DB operations starved the asyncio event loop during streaming connections | Wrapped synchronous DB lookup in `starlette.concurrency.run_in_threadpool` | `test_stream_incident` in API test suite | `2c08971` |
 
 ---
 
 ## Needs Decision (Phase 5 Proposals)
 
+### 1. FR-4 / T4: Real MCP Client Integration vs In-Process Function Calls
+* **Decision needed:** Whether to replace direct Python function calls with an out-of-process Streamable HTTP / SSE MCP client.
+* **Options:**
+  * **Option A (Recommended):** Keep FastMCP tools invoked as direct in-process Python calls in replay/offline mode, and introduce an opt-in HTTP/SSE client adapter when `MCP_MODE=http` is set.
+  * **Option B:** Migrate all tool invocations exclusively to async SSE MCP client connections over HTTP.
+* **Trade-offs:** Option A provides zero-latency execution, 100% offline determinism, and zero external process dependencies during test/evaluation runs. Option B accurately reflects multi-process microservice boundaries but introduces 5-15ms network latency per call, process management complexity, and requires background daemon servers for tests.
+* **Recommendation:** Option A.
+* **Size Estimate:** Medium (2-3 days).
+
+### 2. AUD-05: Normalized 11-Table PostgreSQL Schema with pgvector vs Documented SQLite
+* **Decision needed:** Whether to implement the full 11-table normalized schema with pgvector and Alembic migrations.
+* **Options:**
+  * **Option A (Recommended):** Keep the 2-table SQLite/PostgreSQL schema (`incidents`, `events`) for rapid offline evaluation and zero-dependency testing, and add Alembic migrations for production PostgreSQL deployment.
+  * **Option B:** Fully replace the schema with 11 normalized tables, foreign keys, cascade constraints, and pgvector extension.
+* **Trade-offs:** Option A runs the entire unit and benchmark evaluation suite in <2 seconds without requiring running Docker or PostgreSQL containers. Option B complies strictly with Document 04 data specs but adds substantial infrastructure overhead for developer setups and CI.
+* **Recommendation:** Option A.
+* **Size Estimate:** Large (3-4 days).
+
+### 3. AUD-09: Dense Embeddings, RRF, & Cross-Encoders vs Relabeling RAG as BM25
+* **Decision needed:** Whether to integrate dense vector embeddings (`sentence-transformers`) and cross-encoders or document the RAG engine honestly as BM25 lexical search.
+* **Options:**
+  * **Option A (Recommended):** Relabel the RAG engine in docstrings, README, and evaluation reports as pure BM25 lexical search; remove misleading claims about dense embeddings.
+  * **Option B:** Add `sentence-transformers`, Reciprocal Rank Fusion, and cross-encoder reranker dependencies.
+* **Trade-offs:** Option A eliminates heavy dependencies (PyTorch, sentence-transformers, ~1.5GB disk, slow cold starts) while maintaining 100% groundedness and precision on the curated runbooks. Option B improves recall for paraphrased queries but adds significant memory footprint and inference latency.
+* **Recommendation:** Option A.
+* **Size Estimate:** Small (1 hour) for Option A; Medium (2 days) for Option B.
+
+### 4. AUD-10: Scenario Expansion (8 to 30) with Held-Out Split
+* **Decision needed:** Whether to generate 22 additional synthetic scenarios to reach 30 with a 20/10 dev/held-out split.
+* **Options:**
+  * **Option A (Recommended):** Schedule the generation of 22 synthetic scenarios as a dedicated post-audit roadmap milestone with automated trace generators.
+  * **Option B:** Immediately synthesize 22 scenario datasets and ground-truth labels.
+* **Trade-offs:** Option A ensures data quality and realistic failure models (logs, metrics, traces) rather than rushed synthetic data. Option B reaches target counts immediately but risks synthetic artifacts.
+* **Recommendation:** Option A.
+* **Size Estimate:** Large (3-5 days).
+
+### 5. AUD-11 / T13: Caddy Reverse Proxy & Host Port Hardening
+* **Decision needed:** Whether to restrict internal service ports in `docker-compose.yml` behind Caddy reverse proxy.
+* **Options:**
+  * **Option A (Recommended):** Remove host port mappings for internal services (9090 Prometheus, 8001-8003 MCP servers) in production compose, binding only Caddy on 80/443 with basic auth.
+  * **Option B:** Keep internal ports published to host for local developer inspection.
+* **Trade-offs:** Option A secures the attack surface and prevents unauthorized direct calls to internal MCP servers. Option B simplifies debugging during local component testing.
+* **Recommendation:** Option A with a `docker-compose.override.yml` for local dev.
+* **Size Estimate:** Small (1 day).
+
+### 6. CR-05: Redis-Backed State & Pub/Sub vs In-Memory State
+* **Decision needed:** Whether to replace in-memory dictionaries (`INCIDENTS_DB`, `SUBSCRIBERS`) with Redis state and pub/sub channels.
+* **Options:**
+  * **Option A (Recommended):** Retain in-memory dictionaries with LRU eviction for single-worker local dev, and add Redis Pub/Sub backend when `REDIS_URL` is configured.
+  * **Option B:** Mandate Redis as a hard prerequisite for running the application.
+* **Trade-offs:** Option A preserves zero-dependency local quickstart and offline testability. Option B is required for horizontal scaling and multi-worker Uvicorn (`--workers > 1`).
+* **Recommendation:** Option A.
+* **Size Estimate:** Medium (2 days).
+
+### 7. AUD-07 (Part 2): Dynamic Supervisor Planning vs Static Fan-Out
+* **Decision needed:** Whether to replace static parallel fan-out (metrics + logs + runbook) with dynamic LLM-driven planning.
+* **Options:**
+  * **Option A (Recommended):** Keep static parallel fan-out as the primary architecture; all specialists execute concurrently, ensuring zero telemetry blind spots.
+  * **Option B:** Allow supervisor LLM to dynamically determine which specialists to execute based on alert symptom.
+* **Trade-offs:** Option A is deterministic, eliminates planning LLM latency, and guarantees that metrics and logs are always inspected. Option B saves minor token costs on trivial incidents but risks routing hallucinations and adds latency.
+* **Recommendation:** Option A.
+* **Size Estimate:** Medium (2 days).
+
 ---
 
 ## Docs to Update
+1. `docs/04_DATABASE_DESIGN.md`: Acknowledge lightweight SQLite dual-mode support alongside the planned PostgreSQL migration.
+2. `docs/06_AGENT_AND_MCP_DESIGN.md`: Clarify that RAG currently uses BM25 lexical ranking; dense vector embeddings and cross-encoders are deferred.
+3. `docs/07_EVALUATION_PLAN.md`: Update scenario inventory to reflect current 8-scenario benchmark, with 30-scenario expansion tracked on the roadmap.
+4. `docs/08_SECURITY_THREAT_MODEL.md`: Document cryptographic HMAC-SHA256 capability tokens, single-use token nonces, and sliding-window rate limits.
