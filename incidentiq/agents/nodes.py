@@ -4,6 +4,12 @@ import os
 import uuid
 from typing import Any
 
+from incidentiq.agents.mcp_client import (
+    detect_anomaly,
+    get_error_clusters,
+    query_metric,
+    search_logs,
+)
 from incidentiq.agents.state import IncidentState
 from incidentiq.guardrails.guards import GuardrailManager
 from incidentiq.rag.engine import get_rag_engine
@@ -13,8 +19,6 @@ from incidentiq.security.tokens import (
     hash_token,
     register_server_approval_token,
 )
-from mcp_servers.logs.server import get_error_clusters, search_logs
-from mcp_servers.metrics.server import detect_anomaly, query_metric
 
 logger = logging.getLogger("incidentiq.agents")
 

@@ -60,6 +60,43 @@ services:
       - orders
       - payments
 
+  # FastMCP Microservices (Internal only)
+  mcp-metrics:
+    build:
+      context: ..
+      dockerfile_inline: |
+        FROM python:3.12-slim
+        WORKDIR /app
+        COPY . .
+        RUN pip install mcp uvicorn pydantic httpx structlog prometheus-client
+        CMD ["uvicorn", "mcp_servers.metrics.server:app", "--host", "0.0.0.0", "--port", "9101"]
+    ports:
+      - "9101:9101"
+
+  mcp-logs:
+    build:
+      context: ..
+      dockerfile_inline: |
+        FROM python:3.12-slim
+        WORKDIR /app
+        COPY . .
+        RUN pip install mcp uvicorn pydantic structlog
+        CMD ["uvicorn", "mcp_servers.logs.server:app", "--host", "0.0.0.0", "--port", "9102"]
+    ports:
+      - "9102:9102"
+
+  mcp-remediation:
+    build:
+      context: ..
+      dockerfile_inline: |
+        FROM python:3.12-slim
+        WORKDIR /app
+        COPY . .
+        RUN pip install mcp uvicorn pydantic structlog
+        CMD ["uvicorn", "mcp_servers.remediation.server:app", "--host", "0.0.0.0", "--port", "9103"]
+    ports:
+      - "9103:9103"
+
   # IncidentIQ Control Plane API
   incidentiq-api:
     build:
@@ -73,7 +110,14 @@ services:
     environment:
       - DATA_MODE=replay
       - SCENARIO_ID=001_orders_db_pool_exhaustion
+      - MCP_MODE=http
+      - MCP_METRICS_URL=http://mcp-metrics:9101/mcp
+      - MCP_LOGS_URL=http://mcp-logs:9102/mcp
+      - MCP_REMEDIATION_URL=http://mcp-remediation:9103/mcp
     ports:
       - "8000:8000"
     depends_on:
       - gateway
+      - mcp-metrics
+      - mcp-logs
+      - mcp-remediation

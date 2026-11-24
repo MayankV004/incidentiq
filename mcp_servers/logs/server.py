@@ -227,5 +227,8 @@ def get_log_context(
     }
 
 
+app = server.streamable_http_app()
+
+
 if __name__ == "__main__":
     server.run()

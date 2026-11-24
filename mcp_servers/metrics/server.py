@@ -179,5 +179,8 @@ def detect_anomaly(service: str, metric: str, minutes: int = 30) -> dict[str, An
     }
 
 
+app = server.streamable_http_app()
+
+
 if __name__ == "__main__":
     server.run()

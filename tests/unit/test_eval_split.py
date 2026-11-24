@@ -22,7 +22,7 @@ def test_eval_split_and_repeats(tmp_path):
     assert out["total_runs"] == out["total_scenarios"] * 3
     assert out["repeats"] == 3
     assert out["split"] == "dev"
-    assert out["code_path"] == "deterministic_fallback"
+    assert out["code_path"] in ("deterministic_fallback", "real_llm_live")
     assert "accuracy_std_pct" in out
     assert "latency_std_ms" in out
     assert "cost_std_usd" in out

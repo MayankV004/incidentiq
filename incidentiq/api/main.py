@@ -20,6 +20,12 @@ load_dotenv()
 logger = logging.getLogger("incidentiq.api")
 
 from incidentiq.agents.graph import incident_graph
+from incidentiq.agents.mcp_client import (
+    restart_service,
+    review_config,
+    rollback_deploy,
+    scale_up,
+)
 from incidentiq.api.security import SecurityAndRateLimitMiddleware, get_daily_cost_cap
 from incidentiq.db import init_db
 from incidentiq.db.repository import (
@@ -31,12 +37,6 @@ from incidentiq.db.repository import (
 from incidentiq.guardrails.guards import GuardrailManager
 from incidentiq.schemas.models import Alert
 from incidentiq.security.tokens import consume_server_approval_token
-from mcp_servers.remediation.server import (
-    restart_service,
-    review_config,
-    rollback_deploy,
-    scale_up,
-)
 
 # Initialize database schema on startup
 init_db()

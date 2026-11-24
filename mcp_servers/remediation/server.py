@@ -158,5 +158,8 @@ def review_config(
     }
 
 
+app = server.streamable_http_app()
+
+
 if __name__ == "__main__":
     server.run()
