@@ -6,10 +6,13 @@ import time
 import uuid
 from typing import Any
 
+from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from starlette.responses import StreamingResponse
+
+load_dotenv()
 
 from incidentiq.agents.graph import incident_graph
 from incidentiq.schemas.models import Alert
