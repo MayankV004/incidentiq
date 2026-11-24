@@ -31,7 +31,10 @@ logger = logging.getLogger("incidentiq.agents")
 
 def input_guard_node(state: IncidentState) -> dict[str, Any]:
     """Scans alert for PII & prompt injection before model/specialist execution."""
-    clean_alert, flags = GuardrailManager.process_input_alert(state["alert"])
+    alert = state.get("alert")
+    if alert is None:
+        return {"guardrail_flags": [], "steps": 1}
+    clean_alert, flags = GuardrailManager.process_input_alert(alert)
     inc_id = state.get("incident_id")
     if flags:
         for flag in flags:
@@ -68,14 +71,9 @@ def supervisor_node(state: IncidentState) -> dict[str, Any]:
     service = alert.service.lower() if alert and alert.service else ""
     symptom = alert.symptom.lower() if alert and alert.symptom else ""
 
-    # Always dispatch metrics and logs for production microservices to avoid blind spots
-    plan = ["metrics", "logs"]
-
-    # Include runbook knowledge retrieval for operational microservice triage
-    if service or symptom:
-        plan.append("runbook")
-    else:
-        plan.append("runbook")
+    # Always dispatch metrics, logs, and runbook retrieval for microservice triage
+    plan = ["metrics", "logs", "runbook"]
+    _ = (alert, service, symptom)
 
     return {
         "plan": plan,
@@ -86,7 +84,10 @@ def supervisor_node(state: IncidentState) -> dict[str, Any]:
 
 def metrics_agent_node(state: IncidentState) -> dict[str, Any]:
     """Metrics Specialist: Investigates Prometheus metrics for the affected service."""
-    service = state["alert"].service
+    alert = state.get("alert")
+    if alert is None:
+        return {"evidence": [], "cost_usd": 0.0, "steps": 1}
+    service = alert.service
     scenario_id = state.get("scenario_id") or ""
     new_evidence: list[Evidence] = []
     cost = 0.001
@@ -136,7 +137,10 @@ def metrics_agent_node(state: IncidentState) -> dict[str, Any]:
 
 def logs_agent_node(state: IncidentState) -> dict[str, Any]:
     """Logs Specialist: Searches container logs and aggregates error clusters."""
-    service = state["alert"].service
+    alert = state.get("alert")
+    if alert is None:
+        return {"evidence": [], "cost_usd": 0.0, "steps": 1}
+    service = alert.service
     scenario_id = state.get("scenario_id") or ""
     new_evidence: list[Evidence] = []
     cost = 0.001
@@ -160,14 +164,14 @@ def logs_agent_node(state: IncidentState) -> dict[str, Any]:
     error_logs = search_logs(
         service=service, level="error", limit=3, scenario_id=scenario_id
     )
-    for idx, l in enumerate(error_logs):
+    for idx, log_entry in enumerate(error_logs):
         ev_id = f"ev_log_err_{idx + 1}"
         ev = Evidence(
             id=ev_id,
             kind="log",
-            summary=f"Error log line on {service}: {l.get('msg')}",
-            source_ref=f"mcp:logs_server:search_logs:{l.get('request_id')}",
-            data=l,
+            summary=f"Error log line on {service}: {log_entry.get('msg')}",
+            source_ref=f"mcp:logs_server:search_logs:{log_entry.get('request_id')}",
+            data=log_entry,
         )
         new_evidence.append(ev)
 
@@ -180,9 +184,12 @@ def logs_agent_node(state: IncidentState) -> dict[str, Any]:
 
 def runbook_agent_node(state: IncidentState) -> dict[str, Any]:
     """Runbook RAG Specialist: Retrieves matching playbooks and past postmortems."""
+    alert = state.get("alert")
+    if alert is None:
+        return {"evidence": [], "guardrail_flags": [], "cost_usd": 0.0, "steps": 1}
     rag = get_rag_engine()
-    service = state["alert"].service
-    query = f"{service} {state['alert'].symptom}"
+    service = alert.service
+    query = f"{service} {alert.symptom}"
     top_chunks = rag.retrieve(query=query, service=service, top_k=2)
 
     new_evidence: list[Evidence] = []
@@ -235,7 +242,7 @@ def _call_llm_for_diagnosis(
         or os.getenv("OPENAI_API_KEY")
         or os.getenv("OPENROUTER_API_KEY")
     )
-    model = os.getenv("MODEL_STRONG", "gpt-4o")
+    model = os.getenv("MODEL_STRONG") or "gpt-4o"
 
     # If no key and not an ollama model, return (None, None) to use deterministic engine
     if not api_key and not model.startswith("ollama/"):
@@ -273,7 +280,7 @@ def _call_llm_for_diagnosis(
             "CRITICAL RULES:\n"
             "1. ONLY cite evidence IDs that are explicitly provided in the evidence lists.\n"
             "2. If telemetry is normal, contradictory, or insufficient, set abstained=true and explain why in abstain_reason.\n"
-            "3. If confidence is below 0.50, abstained MUST be true.\n"
+            f"3. If confidence is below {get_abstain_threshold():.2f}, abstained MUST be true.\n"
             "4. Respond with valid JSON matching this schema:\n"
             "{\n"
             '  "category": "db_pool_exhaustion" | "bad_deploy_config" | "cache_failure" | "dependency_timeout" | "slow_db_query" | "memory_leak" | null,\n'
@@ -311,7 +318,7 @@ def _call_llm_for_diagnosis(
             kwargs["response_format"] = {"type": "json_object"}
 
         t_llm = time.perf_counter()
-        response = completion(**kwargs)
+        response: Any = completion(**kwargs)
         llm_latency_ms = (time.perf_counter() - t_llm) * 1000
         usage = getattr(response, "usage", None)
         prompt_tokens = getattr(usage, "prompt_tokens", None) if usage else None
@@ -320,6 +327,16 @@ def _call_llm_for_diagnosis(
             computed_cost = float(litellm.completion_cost(completion_response=response))
         except Exception:  # noqa: BLE001
             computed_cost = 0.0
+            if isinstance(prompt_tokens, int) and isinstance(completion_tokens, int):
+                try:
+                    p_cost, c_cost = litellm.cost_per_token(
+                        model=model,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                    )
+                    computed_cost = float(p_cost) + float(c_cost)
+                except Exception:  # noqa: BLE001
+                    computed_cost = 0.0
 
         if meta_out is not None:
             meta_out.update(
@@ -332,7 +349,13 @@ def _call_llm_for_diagnosis(
                 }
             )
 
-        content = response.choices[0].message.content.strip()
+        choices = getattr(response, "choices", None) or []
+        first_choice = choices[0] if choices else None
+        message = getattr(first_choice, "message", None)
+        raw_content = getattr(message, "content", None)
+        if not isinstance(raw_content, str) or not raw_content.strip():
+            raise ValueError("LLM returned empty or non-text message content")
+        content = raw_content.strip()
 
         if content.startswith("```"):
             lines = content.split("\n")
@@ -378,7 +401,10 @@ def _call_llm_for_diagnosis(
 def root_cause_agent_node(state: IncidentState) -> dict[str, Any]:
     """Root-Cause Synthesis Agent: Reasons across metrics, logs, and playbooks to diagnose the issue."""
     all_evidence = state.get("evidence", [])
-    service = state["alert"].service
+    alert = state.get("alert")
+    if alert is None:
+        return {"hypothesis": None, "cost_usd": 0.0, "steps": 1}
+    service = alert.service
     cost = 0.002
 
     telemetry_evidence = [e for e in all_evidence if e.kind in ["metric", "log"]]
@@ -414,7 +440,7 @@ def root_cause_agent_node(state: IncidentState) -> dict[str, Any]:
     # 1. Try LLM synthesis if API key is configured
     llm_meta: dict[str, Any] = {}
     llm_hypothesis, llm_error = _call_llm_for_diagnosis(
-        alert=state["alert"],
+        alert=alert,
         telemetry_evidence=telemetry_evidence,
         kb_evidence=kb_evidence,
         meta_out=llm_meta,
@@ -579,21 +605,21 @@ def root_cause_agent_node(state: IncidentState) -> dict[str, Any]:
 
 def get_abstain_threshold() -> float:
     try:
-        return float(os.getenv("ABSTAIN_THRESHOLD", "0.50"))
+        return float(os.getenv("ABSTAIN_THRESHOLD") or "0.50")
     except ValueError:
         return 0.50
 
 
 def get_ground_threshold() -> float:
     try:
-        return float(os.getenv("GROUND_THRESHOLD", "0.85"))
+        return float(os.getenv("GROUND_THRESHOLD") or "0.85")
     except ValueError:
         return 0.85
 
 
 def output_guard_node(state: IncidentState) -> dict[str, Any]:
     """Output Guard: Verifies claim groundedness and blocks prompt/secret leakage."""
-    hypothesis = state["hypothesis"]
+    hypothesis = state.get("hypothesis")
     if hypothesis is None:
         return {"steps": 1}
 
@@ -697,11 +723,11 @@ def budget_exceeded_node(state: IncidentState) -> dict[str, Any]:
     steps = state.get("steps", 0)
     cost_usd = state.get("cost_usd", 0.0)
     try:
-        max_steps = int(os.getenv("MAX_AGENT_STEPS", "12"))
+        max_steps = int(os.getenv("MAX_AGENT_STEPS") or "12")
     except ValueError:
         max_steps = 12
     try:
-        budget_usd = float(os.getenv("INCIDENT_BUDGET_USD", "0.05"))
+        budget_usd = float(os.getenv("INCIDENT_BUDGET_USD") or "0.05")
     except ValueError:
         budget_usd = 0.05
     reason = f"Investigation budget exceeded: steps={steps}/{max_steps}, cost=${cost_usd:.4f}/${budget_usd:.2f}"

@@ -121,3 +121,65 @@ def test_real_llm_cost_computed_via_litellm_completion_cost():
     assert result["hypothesis"].is_fallback is False
     assert abs(result["cost_usd"] - 0.000742) < 1e-8
 
+
+def test_cost_per_token_fallback_and_none_content():
+    """Falls back to cost_per_token when completion_cost raises, and falls back gracefully on None content."""
+    from types import SimpleNamespace
+
+    alert = Alert(
+        service="orders",
+        symptom="DB connection pool exhausted",
+        window_start="2026-11-24T12:00:00Z",
+        window_end="2026-11-24T12:30:00Z",
+    )
+    evidence = [
+        Evidence(
+            id="ev_metric_001",
+            kind="metric",
+            summary="pool limit reached (10/10) peak value=10",
+            source_ref="query_metric",
+        ),
+    ]
+    fake_resp = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(
+                    content='{"category":"db_pool_exhaustion","service":"orders","confidence":0.92,"reasoning":"DB pool full [ev_metric_001]","evidence_ids":["ev_metric_001"],"suggested_action":{"type":"review_config","target":"orders","detail":"raise pool"},"abstained":false,"abstain_reason":null}'
+                )
+            )
+        ],
+        usage=SimpleNamespace(prompt_tokens=500, completion_tokens=100),
+    )
+
+    state = {
+        "incident_id": "inc_test_cost_fallback",
+        "alert": alert,
+        "evidence": evidence,
+        "plan": ["metrics", "logs"],
+        "steps": 0,
+        "cost_usd": 0.0,
+    }
+
+    with (
+        patch("litellm.completion", return_value=fake_resp),
+        patch("litellm.completion_cost", side_effect=RuntimeError("ModelNotMapped")),
+        patch("litellm.cost_per_token", return_value=(0.000075, 0.00006)),
+        patch.dict("os.environ", {"GROQ_API_KEY": "fake_key", "MODEL_STRONG": "groq/openai/gpt-oss-120b"}),
+    ):
+        result = root_cause_agent_node(state)
+
+    assert result["hypothesis"].is_fallback is False
+    assert abs(result["cost_usd"] - 0.000135) < 1e-8
+
+    none_resp = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=None))],
+        usage=SimpleNamespace(prompt_tokens=10, completion_tokens=0),
+    )
+    with (
+        patch("litellm.completion", return_value=none_resp),
+        patch.dict("os.environ", {"GROQ_API_KEY": "fake_key", "MODEL_STRONG": ""}),
+    ):
+        fallback_res = root_cause_agent_node(state)
+    assert fallback_res["hypothesis"].is_fallback is True
+    assert "empty or non-text" in fallback_res["error"]
+
