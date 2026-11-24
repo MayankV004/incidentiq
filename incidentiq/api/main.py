@@ -19,12 +19,22 @@ load_dotenv()
 logger = logging.getLogger("incidentiq.api")
 
 from incidentiq.agents.graph import incident_graph
+from incidentiq.db import init_db
+from incidentiq.db.repository import (
+    append_event_to_db,
+    get_incident_from_db,
+    list_incidents_from_db,
+    upsert_incident,
+)
 from incidentiq.schemas.models import Alert
 from mcp_servers.remediation.server import (
     restart_service,
     review_config,
     rollback_deploy,
 )
+
+# Initialize database schema on startup
+init_db()
 
 app = FastAPI(title="IncidentIQ: Autonomous On-Call Triage Control Plane", version="1.0.0")
 
@@ -83,8 +93,16 @@ def health():
 def broadcast_event(incident_id: str, event: dict[str, Any]):
     """Appends an event to the incident log and notifies active SSE subscribers."""
     if incident_id not in INCIDENTS_DB:
-        return
+        db_inc = get_incident_from_db(incident_id)
+        if db_inc:
+            INCIDENTS_DB[incident_id] = db_inc
+        else:
+            return
     INCIDENTS_DB[incident_id].setdefault("events", []).append(event)
+    try:
+        append_event_to_db(incident_id, event)
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"DB append_event failed: {e}")
     for q in SUBSCRIBERS.get(incident_id, []):
         try:
             q.put_nowait(event)
@@ -277,6 +295,10 @@ def run_incident_workflow(incident_id: str, alert: Alert):
                 "langfuse_trace_url": trace_url,
             }
         )
+        try:
+            upsert_incident(INCIDENTS_DB[incident_id])
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"DB upsert failed: {e}")
 
         broadcast_event(
             incident_id,
@@ -361,7 +383,28 @@ def list_scenarios():
 
 @app.get("/v1/incidents")
 def list_incidents():
-    """Lists all investigated incidents."""
+    """Lists all investigated incidents from persistent database."""
+    try:
+        db_records = list_incidents_from_db()
+        if db_records:
+            return [
+                {
+                    "incident_id": inc["incident_id"],
+                    "service": inc["alert"].get("service"),
+                    "symptom": inc["alert"].get("symptom"),
+                    "status": inc.get("status"),
+                    "cost_usd": inc.get("cost_usd", 0.0),
+                    "latency_ms": inc.get("latency_ms", 0.0),
+                    "created_at": inc.get("created_at"),
+                    "root_cause": inc.get("hypothesis", {}).get("root_cause") if inc.get("hypothesis") else None,
+                    "confidence": inc.get("hypothesis", {}).get("confidence") if inc.get("hypothesis") else None,
+                    "langfuse_trace_url": inc.get("langfuse_trace_url"),
+                }
+                for inc in db_records
+            ]
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"Failed to query DB for list_incidents: {e}")
+
     return [
         {
             "incident_id": inc_id,
@@ -399,6 +442,11 @@ def create_incident(req: CreateIncidentRequest, background_tasks: BackgroundTask
         "events": [],
     }
 
+    try:
+        upsert_incident(INCIDENTS_DB[incident_id])
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"DB create failed: {e}")
+
     # Run workflow asynchronously
     background_tasks.add_task(run_incident_workflow, incident_id, alert)
     return {"incident_id": incident_id, "status": "queued", "message": "Incident investigation launched"}
@@ -406,16 +454,21 @@ def create_incident(req: CreateIncidentRequest, background_tasks: BackgroundTask
 
 @app.get("/v1/incidents/{incident_id}")
 def get_incident(incident_id: str):
-    if incident_id not in INCIDENTS_DB:
+    inc = INCIDENTS_DB.get(incident_id) or get_incident_from_db(incident_id)
+    if not inc:
         raise HTTPException(status_code=404, detail="Incident not found")
-    return INCIDENTS_DB[incident_id]
+    return inc
 
 
 @app.get("/v1/incidents/{incident_id}/stream")
 async def stream_incident(incident_id: str, request: Request):
     """Server-Sent Events (SSE) stream for real-time incident investigation events."""
     if incident_id not in INCIDENTS_DB:
-        raise HTTPException(status_code=404, detail="Incident not found")
+        db_inc = get_incident_from_db(incident_id)
+        if db_inc:
+            INCIDENTS_DB[incident_id] = db_inc
+        else:
+            raise HTTPException(status_code=404, detail="Incident not found")
 
     q: asyncio.Queue = asyncio.Queue()
     SUBSCRIBERS.setdefault(incident_id, []).append(q)
@@ -454,7 +507,11 @@ async def stream_incident(incident_id: str, request: Request):
 @app.post("/v1/incidents/{incident_id}/approval")
 def handle_approval(incident_id: str, req: ApprovalDecisionRequest):
     if incident_id not in INCIDENTS_DB:
-        raise HTTPException(status_code=404, detail="Incident not found")
+        db_inc = get_incident_from_db(incident_id)
+        if db_inc:
+            INCIDENTS_DB[incident_id] = db_inc
+        else:
+            raise HTTPException(status_code=404, detail="Incident not found")
 
     inc = INCIDENTS_DB[incident_id]
     if inc.get("status") != "awaiting_approval":
@@ -468,6 +525,10 @@ def handle_approval(incident_id: str, req: ApprovalDecisionRequest):
 
     if req.decision.lower() == "reject":
         inc["status"] = "rejected_by_human"
+        try:
+            upsert_incident(inc)
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"DB update on reject failed: {e}")
         return {"status": "rejected", "message": "Remediation action rejected by engineer"}
 
     # Execute dry-run remediation tool via MCP
@@ -486,6 +547,10 @@ def handle_approval(incident_id: str, req: ApprovalDecisionRequest):
 
     inc["status"] = "remediation_executed"
     inc["remediation_result"] = exec_res
+    try:
+        upsert_incident(inc)
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"DB update on approve failed: {e}")
     return {"status": "approved_and_executed", "result": exec_res}
 
 

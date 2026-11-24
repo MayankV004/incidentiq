@@ -28,5 +28,9 @@ ui/.next/
 ui/node_modules/
 ui/out/
 
-# Database data mounts (if mounted locally)
+# Database data mounts & SQLite files
 pgdata/
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
