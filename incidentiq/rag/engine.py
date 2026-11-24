@@ -7,9 +7,8 @@ from incidentiq.schemas.models import KBChunk
 
 
 class HybridRAGEngine:
-    """Hybrid RAG Retrieval Engine with BM25 keyword matching + semantic vector similarity
-
-    and a cross-encoder reranker for citations.
+    """Lexical RAG Retrieval Engine combining Okapi BM25 ranking, token-level
+    Jaccard overlap, and service metadata boosting for operational runbooks and postmortems.
     """
 
     def __init__(self, knowledge_dir: str = "knowledge"):
@@ -77,7 +76,7 @@ class HybridRAGEngine:
         return score
 
     def retrieve(self, query: str, service: str = "", top_k: int = 3) -> list[KBChunk]:
-        """Hybrid search (BM25 Keyword + Semantic Overlap) followed by cross-encoder reranking."""
+        """Retrieves top-k relevant knowledge chunks using Okapi BM25 scoring with Jaccard lexical overlap and service boosting."""
         if not self.chunks:
             return []
 
