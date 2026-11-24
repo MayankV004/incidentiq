@@ -34,7 +34,10 @@ def run_retrieval_evaluation(
         retrieved = engine.retrieve(query=qtext, service=srv, top_k=5)
         matched_rank = None
         for rank, chunk in enumerate(retrieved, start=1):
-            if chunk.chunk_id.startswith(f"doc_{target}_") or chunk.chunk_id == f"doc_{target}":
+            if (
+                chunk.chunk_id.startswith(f"doc_{target}_")
+                or chunk.chunk_id == f"doc_{target}"
+            ):
                 matched_rank = rank
                 break
 

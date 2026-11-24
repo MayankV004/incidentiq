@@ -37,8 +37,12 @@ def test_compose_yaml_files_structure():
     ]
     for s_name in internal_services:
         s_config = services.get(s_name, {})
-        assert "ports" not in s_config, f"Internal service '{s_name}' must not have host ports in prod compose"
-        assert "expose" in s_config, f"Internal service '{s_name}' should use 'expose' in prod compose"
+        assert "ports" not in s_config, (
+            f"Internal service '{s_name}' must not have host ports in prod compose"
+        )
+        assert "expose" in s_config, (
+            f"Internal service '{s_name}' should use 'expose' in prod compose"
+        )
 
     # Verify override binds strictly to 127.0.0.1
     with open(override_path) as f:
@@ -49,7 +53,9 @@ def test_compose_yaml_files_structure():
         assert s_name in override_services, f"Override must declare ports for {s_name}"
         ports = override_services[s_name].get("ports", [])
         for p in ports:
-            assert str(p).startswith("127.0.0.1:"), f"Port mapping for {s_name} ({p}) must bind strictly to 127.0.0.1"
+            assert str(p).startswith("127.0.0.1:"), (
+                f"Port mapping for {s_name} ({p}) must bind strictly to 127.0.0.1"
+            )
 
 
 def test_docker_compose_cli_validation():

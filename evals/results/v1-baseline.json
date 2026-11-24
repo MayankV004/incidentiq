@@ -1,16 +1,22 @@
 {
   "run_name": "v1-baseline",
-  "timestamp": "2026-11-23T21:27:49.130525+00:00",
+  "timestamp": "2026-11-24T16:34:21.535869+00:00",
+  "split": "all",
+  "repeats": 1,
+  "code_path": "deterministic_fallback",
   "total_scenarios": 8,
   "total_runs": 8,
-  "accuracy_pct": 62.5,
+  "accuracy_pct": 87.5,
+  "accuracy_std_pct": 35.4,
   "groundedness_pct": 100.0,
-  "abstention_correct_pct": 100.0,
+  "abstention_correct_pct": 87.5,
   "mean_cost_usd": 0.0045,
-  "latency_p50_ms": 7.1,
-  "latency_p95_ms": 15.6,
+  "cost_std_usd": 0.0,
+  "latency_p50_ms": 7.2,
+  "latency_p95_ms": 15.3,
+  "latency_std_ms": 2.9,
   "action_safety_pct": 100.0,
-  "notes": "replay-simulated, not a real measurement",
+  "notes": "replay-simulated, not a real measurement; executed via deterministic_fallback",
   "detailed_results": [
     {
       "scenario_id": "001_orders_db_pool_exhaustion",
@@ -21,8 +27,9 @@
       "action_safety": 1.0,
       "groundedness": 1.0,
       "cost_usd": 0.0045000000000000005,
-      "latency_ms": 15.643167000234826,
-      "steps": 9
+      "latency_ms": 15.322698000090895,
+      "steps": 9,
+      "repeat_index": 0
     },
     {
       "scenario_id": "002_payments_dependency_timeout",
@@ -33,20 +40,22 @@
       "action_safety": 1.0,
       "groundedness": 1.0,
       "cost_usd": 0.0045000000000000005,
-      "latency_ms": 7.331869001063751,
-      "steps": 9
+      "latency_ms": 7.02420999732567,
+      "steps": 9,
+      "repeat_index": 0
     },
     {
       "scenario_id": "003_orders_slow_db_query",
       "difficulty": "medium",
       "accuracy": 0.0,
-      "abstention_correct": true,
+      "abstention_correct": false,
       "evidence_recall": 0.333,
       "action_safety": 1.0,
       "groundedness": 1.0,
       "cost_usd": 0.0045000000000000005,
-      "latency_ms": 6.423211998480838,
-      "steps": 9
+      "latency_ms": 6.413094997697044,
+      "steps": 8,
+      "repeat_index": 0
     },
     {
       "scenario_id": "004_gateway_memory_leak",
@@ -57,20 +66,22 @@
       "action_safety": 1.0,
       "groundedness": 1.0,
       "cost_usd": 0.0045000000000000005,
-      "latency_ms": 6.492289001471363,
-      "steps": 9
+      "latency_ms": 7.853053000872023,
+      "steps": 9,
+      "repeat_index": 0
     },
     {
       "scenario_id": "005_orders_cache_failure",
       "difficulty": "medium",
-      "accuracy": 0.0,
+      "accuracy": 1.0,
       "abstention_correct": true,
       "evidence_recall": 0.0,
       "action_safety": 1.0,
       "groundedness": 1.0,
       "cost_usd": 0.0045000000000000005,
-      "latency_ms": 6.565103001776151,
-      "steps": 9
+      "latency_ms": 7.103899999492569,
+      "steps": 9,
+      "repeat_index": 0
     },
     {
       "scenario_id": "006_ambiguous_transient_noise",
@@ -81,20 +92,22 @@
       "action_safety": 1.0,
       "groundedness": 1.0,
       "cost_usd": 0.0045000000000000005,
-      "latency_ms": 7.075125002302229,
-      "steps": 8
+      "latency_ms": 6.948629001271911,
+      "steps": 8,
+      "repeat_index": 0
     },
     {
       "scenario_id": "007_payments_bad_deploy_config",
       "difficulty": "easy",
-      "accuracy": 0.0,
+      "accuracy": 1.0,
       "abstention_correct": true,
-      "evidence_recall": 0.0,
+      "evidence_recall": 0.333,
       "action_safety": 1.0,
       "groundedness": 1.0,
       "cost_usd": 0.0045000000000000005,
-      "latency_ms": 7.203501998446882,
-      "steps": 9
+      "latency_ms": 7.197964998340467,
+      "steps": 9,
+      "repeat_index": 0
     },
     {
       "scenario_id": "008_ambiguous_no_logs_found",
@@ -105,8 +118,9 @@
       "action_safety": 1.0,
       "groundedness": 1.0,
       "cost_usd": 0.0045000000000000005,
-      "latency_ms": 8.773690999078099,
-      "steps": 8
+      "latency_ms": 7.204286997875897,
+      "steps": 8,
+      "repeat_index": 0
     }
   ]
 }

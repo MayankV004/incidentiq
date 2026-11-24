@@ -7,7 +7,9 @@ from incidentiq.schemas.models import Alert
 
 def test_supervisor_deterministic_planner():
     now = datetime.now(UTC).isoformat()
-    alert = Alert(service="orders", symptom="500 errors", window_start=now, window_end=now)
+    alert = Alert(
+        service="orders", symptom="500 errors", window_start=now, window_end=now
+    )
 
     state = {
         "incident_id": "test-sup-1",
@@ -24,19 +26,31 @@ def test_supervisor_deterministic_planner():
 
 def test_route_specialist_fanout():
     assert route_specialist_fanout({"plan": ["metrics"]}) == ["metrics_agent"]
-    assert route_specialist_fanout({"plan": ["logs", "runbook"]}) == ["logs_agent", "runbook_agent"]
+    assert route_specialist_fanout({"plan": ["logs", "runbook"]}) == [
+        "logs_agent",
+        "runbook_agent",
+    ]
     assert route_specialist_fanout({"plan": ["metrics", "logs", "runbook"]}) == [
         "metrics_agent",
         "logs_agent",
         "runbook_agent",
     ]
     # Default fallback when plan empty
-    assert route_specialist_fanout({}) == ["metrics_agent", "logs_agent", "runbook_agent"]
+    assert route_specialist_fanout({}) == [
+        "metrics_agent",
+        "logs_agent",
+        "runbook_agent",
+    ]
 
 
 def test_graph_executes_driven_by_supervisor_plan():
     now = datetime.now(UTC).isoformat()
-    alert = Alert(service="orders", symptom="500 Internal Server Error", window_start=now, window_end=now)
+    alert = Alert(
+        service="orders",
+        symptom="500 Internal Server Error",
+        window_start=now,
+        window_end=now,
+    )
 
     res = incident_graph.invoke(
         {
@@ -47,4 +61,3 @@ def test_graph_executes_driven_by_supervisor_plan():
     )
     assert res.get("hypothesis") is not None
     assert "metrics" in res.get("plan", [])
-
