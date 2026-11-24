@@ -161,6 +161,7 @@ All metrics are deterministically computed in [`evals/scorers.py`](evals/scorers
    * *Formula:* `(blocked_attacks / total_tested_attacks) * 100%`, validated across prompt injections, log poisonings, and PII extractions.
 7. **Execution Latency & Cost:**
    * *Formula:* Latency is measured via high-precision monotonic timers (`t_end - t_start` in milliseconds). Cost is calculated from exact token consumption across prompt and completion tokens.
+   * *(Note: Reported latency and cost figures are replay-simulated against recorded scenario traces in offline evaluation; live shop cluster measurements are pending deployment).*
 
 ---
 
@@ -183,11 +184,15 @@ All metrics are deterministically computed in [`evals/scorers.py`](evals/scorers
 
 ### D. Adversarial Red-Team Security Defense (100% Block Rate)
 
-IncidentIQ tested 10 adversarial vectors covering poisoned log injection, prompt exfiltration, PII leakage, and unauthorized tool execution:
-* **Log Injections (4 vectors):** Neutralized via FastMCP `<untrusted_data>` boundary encapsulation and input sanitization.
-* **Alert Injections (2 vectors):** Blocked via regex heuristic scanners and SQL injection pattern filters.
-* **PII Leaks (2 vectors):** Automatically sanitized by regex PII redaction (`[REDACTED_EMAIL]`, `[REDACTED_CARD]`).
-* **Tool Bypasses (2 vectors):** Blocked by cryptographic single-use capability token validation (`verify_approval_token`).
+IncidentIQ tests 20 adversarial attack vectors across all 6 documented categories:
+* **Poisoned Logs (6 vectors):** Encapsulated via FastMCP `<untrusted_data>` boundaries and filtered by heuristic injection scanners.
+* **Poisoned Runbooks (4 vectors):** Malicious administrative and shell commands quarantined before RAG citation.
+* **Alert Injections (3 vectors):** Sanitized at the API gateway before persistence or queueing; SQL and instruction overrides neutralized.
+* **Prompt Exfiltrations (3 vectors):** System prompt leakage detectors block exfiltration attempts in responses.
+* **Forbidden Tool Bypasses (2 vectors):** Enforced via single-use HMAC-SHA256 capability tokens bound to incident, action, and target.
+* **Metric & Path Injections (2 vectors):** Blocked by strict service allow-lists and scenario directory traversal barriers.
+
+*(Detailed attack payload breakdown available in [`evals/README.md`](evals/README.md).)*
 
 *(Detailed attack payload breakdown available in [`evals/README.md`](evals/README.md).)*
 
@@ -282,5 +287,16 @@ incidentiq/
 
 ---
 
-## 8. License
+## 8. Known Limitations & Architectural Trade-offs
+
+The following design decisions and scope boundaries are tracked for future milestones:
+* **Single-Worker In-Memory State:** `INCIDENTS_DB` and SSE subscribers default to in-memory state for zero-dependency local dev. Multi-worker Uvicorn (`--workers > 1`) and cluster autoscaling require Redis Pub/Sub channels (see Phase 5 Proposal in `FIX_LOG.md`).
+* **Lexical RAG Engine:** Knowledge retrieval uses Okapi BM25 ranking and token-level Jaccard overlap on curated markdown runbooks. Dense vector embeddings (`sentence-transformers`) and cross-encoder reranking are deferred to preserve fast startup and low memory footprint.
+* **Scenario Coverage:** The benchmark suite currently includes 8 high-fidelity curated scenarios (Easy, Medium, Ambiguous). Expanding to 30 scenarios with a 20/10 dev/held-out split is tracked on the roadmap.
+* **Dry-Run Remediation:** Action execution is strictly dry-run only; actions return cryptographically signed capability receipts and log intent without altering external production infrastructure.
+* **MCP Invocation Mode:** FastMCP server tools are invoked as direct in-process calls during replay evaluation; streamable HTTP transport is supported when running against live container services.
+
+---
+
+## 9. License
 Distributed under the MIT License. See `LICENSE` for more information.
