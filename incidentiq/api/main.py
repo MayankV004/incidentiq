@@ -4,15 +4,19 @@ import glob
 import json
 import logging
 import os
+import socket
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from sqlalchemy import text
 from starlette.concurrency import run_in_threadpool
 from starlette.responses import JSONResponse, StreamingResponse
 
@@ -24,10 +28,12 @@ from contextlib import asynccontextmanager
 
 from incidentiq.agents.graph import incident_graph
 from incidentiq.agents.mcp_client import (
+    reset_current_incident_id,
     restart_service,
     review_config,
     rollback_deploy,
     scale_up,
+    set_current_incident_id,
 )
 from incidentiq.api.security import (
     SecurityAndRateLimitMiddleware,
@@ -41,8 +47,10 @@ from incidentiq.db.repository import (
     get_daily_costs_by_id_from_db,
     get_incident_from_db,
     list_incidents_from_db,
+    record_approval_decision,
     upsert_incident,
 )
+from incidentiq.db.session import SessionLocal
 from incidentiq.guardrails.guards import GuardrailManager
 from incidentiq.schemas.models import Alert
 from incidentiq.security.tokens import (
@@ -129,6 +137,37 @@ async def custom_http_exception_handler(request: Request, exc: HTTPException):
     )
 
 
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Returns Pydantic 422 validation errors in the standard error envelope."""
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error": {
+                "code": "VALIDATION_ERROR",
+                "message": "Request validation failed",
+                "details": {"errors": exc.errors()},
+            }
+        },
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Returns unexpected 500 errors in the standard error envelope without leaking internals."""
+    logger.exception(f"Unhandled error processing {request.method} {request.url.path}: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": {
+                "code": "INTERNAL_ERROR",
+                "message": "An unexpected internal server error occurred.",
+                "details": {},
+            }
+        },
+    )
+
+
 # In-memory LRU store for incidents and active SSE stream subscribers
 INCIDENTS_DB = IncidentLRUCache()
 SUBSCRIBERS: dict[str, list[asyncio.Queue]] = {}
@@ -179,7 +218,52 @@ def healthz():
 
 @app.get("/readyz")
 def readyz():
-    return {"status": "ready", "service": "incidentiq_api"}
+    checks: dict[str, str] = {}
+    ready = True
+
+    # 1. Database readiness probe
+    try:
+        with SessionLocal() as db:
+            db.execute(text("SELECT 1"))
+        checks["database"] = "ok"
+    except Exception as exc:  # noqa: BLE001
+        ready = False
+        checks["database"] = f"error: {exc}"
+
+    # 2. HTTP MCP servers readiness probe when MCP_MODE=http
+    if os.getenv("MCP_MODE", "inprocess").lower() == "http":
+        mcp_targets = {
+            "mcp_metrics": os.getenv("MCP_METRICS_URL", "http://mcp-metrics:9101/mcp"),
+            "mcp_logs": os.getenv("MCP_LOGS_URL", "http://mcp-logs:9102/mcp"),
+            "mcp_remediation": os.getenv(
+                "MCP_REMEDIATION_URL", "http://mcp-remediation:9103/mcp"
+            ),
+        }
+        for name, url in mcp_targets.items():
+            parsed = urlparse(url)
+            host = parsed.hostname
+            port = parsed.port or (443 if parsed.scheme == "https" else 80)
+            if not host:
+                ready = False
+                checks[name] = "error: missing host"
+                continue
+            try:
+                with socket.create_connection((host, port), timeout=1.5):
+                    checks[name] = "ok"
+            except OSError as exc:
+                ready = False
+                checks[name] = f"unreachable: {exc}"
+
+    if not ready:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "not_ready",
+                "service": "incidentiq_api",
+                "checks": checks,
+            },
+        )
+    return {"status": "ready", "service": "incidentiq_api", "checks": checks}
 
 
 def broadcast_event(incident_id: str, event: dict[str, Any]):
@@ -273,6 +357,7 @@ def run_incident_workflow(incident_id: str, alert: Alert):
         trace_ctx = contextlib.nullcontext()
 
     trace_url = None
+    ctx_tok = set_current_incident_id(incident_id)
 
     try:
         with trace_ctx:
@@ -458,6 +543,8 @@ def run_incident_workflow(incident_id: str, alert: Alert):
                 "timestamp": time.time(),
             },
         )
+    finally:
+        reset_current_incident_id(ctx_tok)
 
 
 @app.get("/v1/scenarios")
@@ -780,6 +867,7 @@ def handle_approval(incident_id: str, req: ApprovalDecisionRequest):
     if req.decision.lower() == "reject":
         inc["status"] = "rejected_by_human"
         consume_server_approval_token(expected_approval_id)
+        record_approval_decision(expected_approval_id, "rejected")
         try:
             upsert_incident(inc)
         except Exception as e:  # noqa: BLE001
@@ -817,30 +905,37 @@ def handle_approval(incident_id: str, req: ApprovalDecisionRequest):
     act_type = action.get("type")
     target = action.get("target")
 
-    if act_type == "restart_service":
-        exec_res = restart_service(service=target, token=token, incident_id=incident_id)
-    elif act_type == "rollback_deploy":
-        exec_res = rollback_deploy(
-            service=target,
-            target_version="v2.4.0",
-            token=token,
-            incident_id=incident_id,
-        )
-    elif act_type == "scale_up":
-        exec_res = scale_up(
-            service=target, replicas=2, token=token, incident_id=incident_id
-        )
-    elif act_type == "review_config":
-        exec_res = review_config(
-            service=target,
-            parameter="MAX_DB_POOL_SIZE",
-            proposed_value="20",
-            token=token,
-            incident_id=incident_id,
-        )
-    else:
-        exec_res = {"success": True, "message": "No destructive action required"}
+    ctx_tok = set_current_incident_id(incident_id)
+    try:
+        if act_type == "restart_service":
+            exec_res = restart_service(
+                service=target, token=token, incident_id=incident_id
+            )
+        elif act_type == "rollback_deploy":
+            exec_res = rollback_deploy(
+                service=target,
+                target_version="v2.4.0",
+                token=token,
+                incident_id=incident_id,
+            )
+        elif act_type == "scale_up":
+            exec_res = scale_up(
+                service=target, replicas=2, token=token, incident_id=incident_id
+            )
+        elif act_type == "review_config":
+            exec_res = review_config(
+                service=target,
+                parameter="MAX_DB_POOL_SIZE",
+                proposed_value="20",
+                token=token,
+                incident_id=incident_id,
+            )
+        else:
+            exec_res = {"success": True, "message": "No destructive action required"}
+    finally:
+        reset_current_incident_id(ctx_tok)
 
+    record_approval_decision(expected_approval_id, "approved")
     inc["status"] = "remediation_executed"
     inc["remediation_result"] = exec_res
     try:

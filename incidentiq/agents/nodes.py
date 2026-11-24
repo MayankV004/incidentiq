@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import time
 import uuid
 from typing import Any
 
@@ -11,6 +12,11 @@ from incidentiq.agents.mcp_client import (
     search_logs,
 )
 from incidentiq.agents.state import IncidentState
+from incidentiq.db.repository import (
+    record_approval_requested,
+    record_guardrail_event,
+    record_llm_call,
+)
 from incidentiq.guardrails.guards import GuardrailManager
 from incidentiq.rag.engine import get_rag_engine
 from incidentiq.schemas.models import Action, Evidence, Hypothesis
@@ -26,6 +32,24 @@ logger = logging.getLogger("incidentiq.agents")
 def input_guard_node(state: IncidentState) -> dict[str, Any]:
     """Scans alert for PII & prompt injection before model/specialist execution."""
     clean_alert, flags = GuardrailManager.process_input_alert(state["alert"])
+    inc_id = state.get("incident_id")
+    if flags:
+        for flag in flags:
+            record_guardrail_event(
+                incident_id=inc_id,
+                phase="input",
+                flag_type=flag.split(":", 1)[0],
+                detail=flag,
+                sanitized_output=clean_alert.symptom,
+            )
+    else:
+        record_guardrail_event(
+            incident_id=inc_id,
+            phase="input",
+            flag_type="passed",
+            detail="Input alert passed PII and injection checks",
+            sanitized_output=clean_alert.symptom,
+        )
     return {
         "alert": clean_alert,
         "guardrail_flags": flags,
@@ -179,6 +203,16 @@ def runbook_agent_node(state: IncidentState) -> dict[str, Any]:
         )
         new_evidence.append(ev)
 
+    if guardrail_flags:
+        inc_id = state.get("incident_id")
+        for flag in guardrail_flags:
+            record_guardrail_event(
+                incident_id=inc_id,
+                phase="runbook",
+                flag_type="runbook_injection_flagged",
+                detail=flag,
+            )
+
     return {
         "evidence": new_evidence,
         "guardrail_flags": guardrail_flags,
@@ -191,6 +225,7 @@ def _call_llm_for_diagnosis(
     alert: Any,
     telemetry_evidence: list[Evidence],
     kb_evidence: list[Evidence],
+    meta_out: dict[str, Any] | None = None,
 ) -> tuple[Hypothesis | None, str | None]:
     """Invokes LiteLLM for dynamic root cause diagnosis when an LLM is configured."""
     api_key = (
@@ -266,7 +301,8 @@ def _call_llm_for_diagnosis(
                 {"role": "user", "content": user_prompt},
             ],
             "temperature": 0.1,
-            "timeout": 15,
+            "timeout": 20,
+            "num_retries": 2,
         }
         if api_key:
             kwargs["api_key"] = api_key
@@ -274,7 +310,28 @@ def _call_llm_for_diagnosis(
         if any(prov in model for prov in ["gpt", "groq", "gemini", "claude"]):
             kwargs["response_format"] = {"type": "json_object"}
 
+        t_llm = time.perf_counter()
         response = completion(**kwargs)
+        llm_latency_ms = (time.perf_counter() - t_llm) * 1000
+        usage = getattr(response, "usage", None)
+        prompt_tokens = getattr(usage, "prompt_tokens", None) if usage else None
+        completion_tokens = getattr(usage, "completion_tokens", None) if usage else None
+        try:
+            computed_cost = float(litellm.completion_cost(completion_response=response))
+        except Exception:  # noqa: BLE001
+            computed_cost = 0.0
+
+        if meta_out is not None:
+            meta_out.update(
+                {
+                    "model": model,
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "cost_usd": round(computed_cost, 8),
+                    "latency_ms": round(llm_latency_ms, 2),
+                }
+            )
+
         content = response.choices[0].message.content.strip()
 
         if content.startswith("```"):
@@ -328,6 +385,7 @@ def root_cause_agent_node(state: IncidentState) -> dict[str, Any]:
     kb_evidence = [e for e in all_evidence if e.kind in ["runbook", "postmortem"]]
 
     # If no metrics anomalies and no error logs were discovered, we MUST abstain!
+    inc_id = state.get("incident_id")
     if not telemetry_evidence:
         hypothesis = Hypothesis(
             category=None,
@@ -339,6 +397,14 @@ def root_cause_agent_node(state: IncidentState) -> dict[str, Any]:
             abstained=True,
             abstain_reason="Telemetry is healthy. No metric anomalies or error logs support a system outage.",
         )
+        record_llm_call(
+            incident_id=inc_id,
+            model="deterministic_abstain",
+            purpose="root_cause_synthesis",
+            prompt_tokens=0,
+            completion_tokens=0,
+            cost_usd=0.0,
+        )
         return {
             "hypothesis": hypothesis,
             "cost_usd": cost,
@@ -346,17 +412,41 @@ def root_cause_agent_node(state: IncidentState) -> dict[str, Any]:
         }
 
     # 1. Try LLM synthesis if API key is configured
+    llm_meta: dict[str, Any] = {}
     llm_hypothesis, llm_error = _call_llm_for_diagnosis(
         alert=state["alert"],
         telemetry_evidence=telemetry_evidence,
         kb_evidence=kb_evidence,
+        meta_out=llm_meta,
     )
     if llm_hypothesis is not None:
+        real_cost = float(llm_meta.get("cost_usd", 0.0))
+        record_llm_call(
+            incident_id=inc_id,
+            model=str(llm_meta.get("model", os.getenv("MODEL_STRONG", "llm"))),
+            purpose="root_cause_synthesis",
+            prompt_tokens=llm_meta.get("prompt_tokens"),
+            completion_tokens=llm_meta.get("completion_tokens"),
+            cost_usd=real_cost,
+            latency_ms=float(llm_meta.get("latency_ms", 0.0)),
+        )
         return {
             "hypothesis": llm_hypothesis,
-            "cost_usd": 0.003,
+            "cost_usd": real_cost,
             "steps": 1,
         }
+
+    record_llm_call(
+        incident_id=inc_id,
+        model=os.getenv("MODEL_STRONG", "deterministic_fallback")
+        if llm_error
+        else "deterministic_fallback",
+        purpose="root_cause_synthesis",
+        prompt_tokens=0,
+        completion_tokens=0,
+        cost_usd=0.0,
+        error=llm_error,
+    )
 
     # 2. Deterministic Rule Engine Fallback (Zero-Dependency Offline Replay)
     telemetry_text = "\n".join(
@@ -534,6 +624,25 @@ def output_guard_node(state: IncidentState) -> dict[str, Any]:
             flags.append(f"prompt_leakage_blocked: {leak_reason}")
             break
 
+    inc_id = state.get("incident_id")
+    if flags:
+        for flag in flags:
+            record_guardrail_event(
+                incident_id=inc_id,
+                phase="output",
+                flag_type=flag.split(":", 1)[0],
+                detail=flag,
+                sanitized_output=verified_hypothesis.reasoning,
+            )
+    else:
+        record_guardrail_event(
+            incident_id=inc_id,
+            phase="output",
+            flag_type="passed",
+            detail="Output passed groundedness and prompt-leakage checks",
+            sanitized_output=verified_hypothesis.reasoning,
+        )
+
     return {
         "hypothesis": verified_hypothesis,
         "guardrail_flags": flags,
@@ -564,12 +673,19 @@ def human_approval_node(state: IncidentState) -> dict[str, Any]:
     register_server_approval_token(approval_id, raw_token)
 
     # State retains only approval_id, status, action, and token_hash (NEVER raw capability token)
+    token_hash = hash_token(raw_token)
     approval_data = {
         "approval_id": approval_id,
         "status": "awaiting_approval",
         "action": action_dict,
-        "token_hash": hash_token(raw_token),
+        "token_hash": token_hash,
     }
+    record_approval_requested(
+        approval_id=approval_id,
+        incident_id=incident_id,
+        action=action_dict,
+        token_hash=token_hash,
+    )
     return {
         "approval": approval_data,
         "steps": 1,

@@ -1,8 +1,15 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   # Caddy Production Reverse Proxy (Only public ingress on ports 80 & 443)
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    logging: *default-logging
     environment:
       - DEMO_DOMAIN=${DEMO_DOMAIN:-localhost}
       - METRICS_BASIC_AUTH_USER=${METRICS_BASIC_AUTH_USER:-admin}
@@ -35,6 +42,7 @@ services:
       dockerfile: deploy/Dockerfile.python
     command: ["uvicorn", "shop.fake_external.main:app", "--host", "0.0.0.0", "--port", "8004"]
     restart: unless-stopped
+    logging: *default-logging
     expose:
       - "8004"
     healthcheck:
@@ -52,6 +60,7 @@ services:
       dockerfile: deploy/Dockerfile.python
     command: ["uvicorn", "shop.payments.main:app", "--host", "0.0.0.0", "--port", "8003"]
     restart: unless-stopped
+    logging: *default-logging
     environment:
       - FAKE_EXTERNAL_URL=http://fake-external:8004
     expose:
@@ -74,6 +83,7 @@ services:
       dockerfile: deploy/Dockerfile.python
     command: ["uvicorn", "shop.orders.main:app", "--host", "0.0.0.0", "--port", "8002"]
     restart: unless-stopped
+    logging: *default-logging
     expose:
       - "8002"
     healthcheck:
@@ -91,6 +101,7 @@ services:
       dockerfile: deploy/Dockerfile.python
     command: ["uvicorn", "shop.gateway.main:app", "--host", "0.0.0.0", "--port", "8001"]
     restart: unless-stopped
+    logging: *default-logging
     environment:
       - ORDERS_SERVICE_URL=http://orders:8002
       - PAYMENTS_SERVICE_URL=http://payments:8003
@@ -117,6 +128,7 @@ services:
       dockerfile: deploy/Dockerfile.python
     command: ["uvicorn", "mcp_servers.metrics.server:app", "--host", "0.0.0.0", "--port", "9101"]
     restart: unless-stopped
+    logging: *default-logging
     environment:
       - DATA_MODE=${DATA_MODE:-replay}
       - SCENARIO_ID=${SCENARIO_ID:-001_orders_db_pool_exhaustion}
@@ -137,6 +149,7 @@ services:
       dockerfile: deploy/Dockerfile.python
     command: ["uvicorn", "mcp_servers.logs.server:app", "--host", "0.0.0.0", "--port", "9102"]
     restart: unless-stopped
+    logging: *default-logging
     environment:
       - DATA_MODE=${DATA_MODE:-replay}
       - SCENARIO_ID=${SCENARIO_ID:-001_orders_db_pool_exhaustion}
@@ -157,6 +170,7 @@ services:
       dockerfile: deploy/Dockerfile.python
     command: ["uvicorn", "mcp_servers.remediation.server:app", "--host", "0.0.0.0", "--port", "9103"]
     restart: unless-stopped
+    logging: *default-logging
     environment:
       - APPROVAL_TOKEN_SECRET=${APPROVAL_TOKEN_SECRET:-}
     expose:
@@ -177,6 +191,7 @@ services:
       dockerfile: deploy/Dockerfile.python
     command: ["uvicorn", "incidentiq.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
     restart: unless-stopped
+    logging: *default-logging
     environment:
       - DATABASE_URL=sqlite:////data/incidentiq.db
       - DATA_MODE=${DATA_MODE:-replay}
@@ -225,6 +240,7 @@ services:
       args:
         - NEXT_PUBLIC_API_URL=
     restart: unless-stopped
+    logging: *default-logging
     environment:
       - API_INTERNAL_URL=http://incidentiq-api:8000
       - API_KEY=${API_KEY:-}

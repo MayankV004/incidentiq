@@ -5,7 +5,7 @@ import os
 import queue
 import time
 import uuid
-from logging.handlers import QueueHandler, QueueListener
+from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
 
 import psutil
 import structlog
@@ -69,8 +69,12 @@ def _get_queue_logger(service_name: str) -> logging.Logger:
     log_file_path = f"logs/{service_name}.log"
     shared_log_path = "logs/shop.log"
 
-    h_service = logging.FileHandler(log_file_path)
-    h_shared = logging.FileHandler(shared_log_path)
+    h_service = RotatingFileHandler(
+        log_file_path, maxBytes=5 * 1024 * 1024, backupCount=3
+    )
+    h_shared = RotatingFileHandler(
+        shared_log_path, maxBytes=5 * 1024 * 1024, backupCount=3
+    )
     fmt = logging.Formatter("%(message)s")
     h_service.setFormatter(fmt)
     h_shared.setFormatter(fmt)

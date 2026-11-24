@@ -5,18 +5,32 @@ and out-of-process Streamable HTTP MCP transport.
 """
 
 import asyncio
+import contextvars
 import json
 import logging
 import os
+import time
 from typing import Any
 
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 
 from incidentiq.agents.tool_registry import is_tool_allowed_for_agent
+from incidentiq.db.repository import record_tool_call
 from mcp_servers.validation import validate_scenario_id
 
 logger = logging.getLogger("incidentiq.mcp_client")
+_CURRENT_INCIDENT_ID: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "_CURRENT_INCIDENT_ID", default=None
+)
+
+
+def set_current_incident_id(incident_id: str | None) -> contextvars.Token[str | None]:
+    return _CURRENT_INCIDENT_ID.set(incident_id)
+
+
+def reset_current_incident_id(token: contextvars.Token[str | None]) -> None:
+    _CURRENT_INCIDENT_ID.reset(token)
 
 # In-process server instances and tool functions
 from mcp_servers.logs.server import (
@@ -121,11 +135,22 @@ def call_mcp_tool(
     the in-process server or the Streamable HTTP client.
     """
     arguments = arguments or {}
+    inc_id = _CURRENT_INCIDENT_ID.get()
+    t0 = time.perf_counter()
 
     # 1. Enforce strict allow-list wrapper for both modes
     if not is_tool_allowed_for_agent(agent_name, tool_name):
         error_msg = f"Security Violation: Tool '{tool_name}' is not allowed for agent '{agent_name}'."
         logger.error(error_msg)
+        record_tool_call(
+            incident_id=inc_id,
+            server=server_name,
+            tool_name=tool_name,
+            arguments=arguments,
+            allowed=False,
+            error=error_msg,
+            latency_ms=(time.perf_counter() - t0) * 1000,
+        )
         raise PermissionError(error_msg)
 
     mcp_mode = os.getenv("MCP_MODE", "inprocess").lower()
@@ -134,10 +159,28 @@ def call_mcp_tool(
     if mcp_mode != "http":
         func = INPROCESS_TOOLS.get(tool_name)
         if not func:
-            raise NotImplementedError(
-                f"Tool '{tool_name}' not implemented in in-process registry"
+            err = f"Tool '{tool_name}' not implemented in in-process registry"
+            record_tool_call(
+                incident_id=inc_id,
+                server=server_name,
+                tool_name=tool_name,
+                arguments=arguments,
+                allowed=True,
+                error=err,
+                latency_ms=(time.perf_counter() - t0) * 1000,
             )
-        return func(**arguments)
+            raise NotImplementedError(err)
+        res = func(**arguments)
+        record_tool_call(
+            incident_id=inc_id,
+            server=server_name,
+            tool_name=tool_name,
+            arguments=arguments,
+            result={"summary": "ok"} if res is not None else None,
+            allowed=True,
+            latency_ms=(time.perf_counter() - t0) * 1000,
+        )
+        return res
 
     # 3. Streamable HTTP client dispatch (production deploy compose)
     env_var, default_url = SERVER_URL_ENV_VARS.get(
@@ -161,11 +204,30 @@ def call_mcp_tool(
                 future = executor.submit(
                     asyncio.run, _call_http_mcp(server_url, tool_name, arguments)
                 )
-                return future.result(timeout=15)
+                res = future.result(timeout=15)
         else:
-            return asyncio.run(_call_http_mcp(server_url, tool_name, arguments))
+            res = asyncio.run(_call_http_mcp(server_url, tool_name, arguments))
+        record_tool_call(
+            incident_id=inc_id,
+            server=server_name,
+            tool_name=tool_name,
+            arguments=arguments,
+            result={"summary": "ok"} if res is not None else None,
+            allowed=True,
+            latency_ms=(time.perf_counter() - t0) * 1000,
+        )
+        return res
     except Exception as exc:
         logger.error(f"HTTP MCP call to {server_url} for '{tool_name}' failed: {exc}")
+        record_tool_call(
+            incident_id=inc_id,
+            server=server_name,
+            tool_name=tool_name,
+            arguments=arguments,
+            allowed=True,
+            error=str(exc),
+            latency_ms=(time.perf_counter() - t0) * 1000,
+        )
         raise
 
 

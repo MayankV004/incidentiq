@@ -1,8 +1,34 @@
+import logging
 import time
 from typing import Any
 
-from incidentiq.db.models import IncidentRecord
+from incidentiq.db.models import (
+    ApprovalRecord,
+    GuardrailEventRecord,
+    IncidentRecord,
+    LLMCallRecord,
+    ToolCallRecord,
+)
 from incidentiq.db.session import SessionLocal
+
+logger = logging.getLogger("incidentiq.db")
+
+
+def _safe_truncate(value: Any, limit: int = 500) -> str | None:
+    if value is None:
+        return None
+    text = str(value)
+    return text[:limit]
+
+
+def _sanitize_tool_args(arguments: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(arguments, dict):
+        return arguments
+    sanitized = dict(arguments)
+    for secret_key in ("token", "approval_token"):
+        if sanitized.get(secret_key):
+            sanitized[secret_key] = "[REDACTED]"
+    return sanitized
 
 
 def upsert_incident(incident_data: dict[str, Any]) -> dict[str, Any]:
@@ -106,3 +132,145 @@ def get_daily_costs_by_id_from_db(since_ts: float) -> dict[str, float]:
             .all()
         )
         return {str(row.id): float(row.cost_usd or 0.0) for row in rows}
+
+
+def record_llm_call(
+    incident_id: str | None,
+    model: str,
+    purpose: str = "root_cause_synthesis",
+    prompt_tokens: int | None = None,
+    completion_tokens: int | None = None,
+    cost_usd: float = 0.0,
+    latency_ms: float = 0.0,
+    cache_hit: bool = False,
+    error: str | None = None,
+) -> None:
+    """Persists an LLM invocation telemetry row."""
+    try:
+        with SessionLocal() as db:
+            db.add(
+                LLMCallRecord(
+                    incident_id=incident_id,
+                    model=model,
+                    purpose=purpose,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    cost_usd=cost_usd,
+                    latency_ms=latency_ms,
+                    cache_hit=cache_hit,
+                    error=_safe_truncate(error),
+                    created_at=time.time(),
+                )
+            )
+            db.commit()
+    except Exception as exc:  # noqa: BLE001
+        logger.debug(f"Failed to record llm_calls telemetry: {exc}")
+
+
+def record_tool_call(
+    incident_id: str | None,
+    server: str,
+    tool_name: str,
+    arguments: dict[str, Any] | None = None,
+    result: Any = None,
+    allowed: bool = True,
+    error: str | None = None,
+    latency_ms: float = 0.0,
+) -> None:
+    """Persists an MCP tool call telemetry row with tokens sanitized."""
+    try:
+        safe_result: Any = result
+        if isinstance(result, (dict, list)):
+            safe_result = result
+        elif result is not None:
+            safe_result = {"value": _safe_truncate(result)}
+        with SessionLocal() as db:
+            db.add(
+                ToolCallRecord(
+                    incident_id=incident_id,
+                    server=server,
+                    tool_name=tool_name,
+                    arguments=_sanitize_tool_args(arguments),
+                    result=safe_result,
+                    allowed=allowed,
+                    error=_safe_truncate(error),
+                    latency_ms=latency_ms,
+                    created_at=time.time(),
+                )
+            )
+            db.commit()
+    except Exception as exc:  # noqa: BLE001
+        logger.debug(f"Failed to record tool_calls telemetry: {exc}")
+
+
+def record_guardrail_event(
+    incident_id: str | None,
+    phase: str,
+    flag_type: str,
+    detail: str = "",
+    raw_input: str | None = None,
+    sanitized_output: str | None = None,
+) -> None:
+    """Persists a guardrail execution/trigger telemetry row."""
+    try:
+        with SessionLocal() as db:
+            db.add(
+                GuardrailEventRecord(
+                    incident_id=incident_id,
+                    phase=phase,
+                    flag_type=flag_type[:64],
+                    detail=_safe_truncate(detail),
+                    raw_input=_safe_truncate(raw_input),
+                    sanitized_output=_safe_truncate(sanitized_output),
+                    created_at=time.time(),
+                )
+            )
+            db.commit()
+    except Exception as exc:  # noqa: BLE001
+        logger.debug(f"Failed to record guardrail_events telemetry: {exc}")
+
+
+def record_approval_requested(
+    approval_id: str,
+    incident_id: str,
+    action: dict[str, Any],
+    token_hash: str,
+) -> None:
+    """Persists a pending human approval request row (token hash only, never raw token)."""
+    try:
+        with SessionLocal() as db:
+            db.add(
+                ApprovalRecord(
+                    approval_id=approval_id,
+                    incident_id=incident_id,
+                    action=action,
+                    decision=None,
+                    token_hash=token_hash,
+                    requested_at=time.time(),
+                )
+            )
+            db.commit()
+    except Exception as exc:  # noqa: BLE001
+        logger.debug(f"Failed to record approvals request telemetry: {exc}")
+
+
+def record_approval_decision(
+    approval_id: str,
+    decision: str,
+    decided_by: str = "on_call_engineer",
+) -> None:
+    """Updates an approval telemetry row with human decision and timestamp."""
+    try:
+        with SessionLocal() as db:
+            rec = (
+                db.query(ApprovalRecord)
+                .filter(ApprovalRecord.approval_id == approval_id)
+                .first()
+            )
+            if rec:
+                rec.decision = decision  # type: ignore[assignment]
+                rec.decided_by = decided_by  # type: ignore[assignment]
+                rec.decided_at = time.time()  # type: ignore[assignment]
+                db.commit()
+    except Exception as exc:  # noqa: BLE001
+        logger.debug(f"Failed to record approvals decision telemetry: {exc}")
