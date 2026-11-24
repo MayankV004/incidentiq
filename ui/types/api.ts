@@ -98,6 +98,7 @@ export interface IncidentDetail {
   steps?: number;
   remediation_result?: Record<string, unknown>;
   events?: IncidentEvent[];
+  langfuse_trace_url?: string;
   error?: string;
 }
 
@@ -111,6 +112,7 @@ export interface IncidentSummary {
   created_at: number;
   root_cause?: string;
   confidence?: number;
+  langfuse_trace_url?: string;
 }
 
 export interface Scenario {

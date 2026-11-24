@@ -1,6 +1,8 @@
 import asyncio
+import contextlib
 import glob
 import json
+import logging
 import os
 import time
 import uuid
@@ -13,6 +15,8 @@ from pydantic import BaseModel
 from starlette.responses import StreamingResponse
 
 load_dotenv()
+
+logger = logging.getLogger("incidentiq.api")
 
 from incidentiq.agents.graph import incident_graph
 from incidentiq.schemas.models import Alert
@@ -35,6 +39,27 @@ app.add_middleware(
 # In-memory store for incidents and active SSE stream subscribers
 INCIDENTS_DB: dict[str, dict[str, Any]] = {}
 SUBSCRIBERS: dict[str, list[asyncio.Queue]] = {}
+
+
+def get_langfuse_handler():
+    """Initializes Langfuse CallbackHandler and client if credentials exist."""
+    pub = os.getenv("LANGFUSE_PUBLIC_KEY")
+    sec = os.getenv("LANGFUSE_SECRET_KEY")
+    if not (pub and sec and pub.strip() and sec.strip()):
+        return None, None
+    try:
+        from langfuse import get_client
+        from langfuse.langchain import CallbackHandler
+
+        host = os.getenv("LANGFUSE_HOST") or os.getenv("LANGFUSE_BASE_URL", "https://cloud.langfuse.com")
+        os.environ["LANGFUSE_BASE_URL"] = host
+        os.environ["LANGFUSE_HOST"] = host
+        handler = CallbackHandler()
+        client = get_client()
+        return handler, client
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Langfuse tracer initialization skipped: {e}")
+        return None, None
 
 
 class CreateIncidentRequest(BaseModel):
@@ -110,86 +135,124 @@ def run_incident_workflow(incident_id: str, alert: Alert):
     approval_dict = None
     flags = []
 
+    # Initialize Langfuse tracer if configured
+    langfuse_handler, langfuse_client = get_langfuse_handler()
+    stream_config: dict[str, Any] = {}
+    if langfuse_handler:
+        stream_config["callbacks"] = [langfuse_handler]
+        stream_config["run_name"] = f"triage-graph-{alert.service}"
+
+    if langfuse_handler and langfuse_client:
+        from langfuse import propagate_attributes
+
+        trace_ctx = propagate_attributes(
+            trace_name=f"IncidentIQ Triage: {alert.service}",
+            session_id=incident_id,
+            user_id="oncall-sre",
+            tags=[alert.service, scenario_id or "live", "incidentiq", "langgraph"],
+            metadata={
+                "incident_id": incident_id,
+                "scenario_id": scenario_id,
+                "service": alert.service,
+                "symptom": alert.symptom,
+                "window_start": alert.window_start,
+                "window_end": alert.window_end,
+            },
+        )
+    else:
+        trace_ctx = contextlib.nullcontext()
+
+    trace_url = None
+
     try:
-        for chunk in incident_graph.stream(initial_state, stream_mode="updates"):
-            for node, update in chunk.items():
-                if not isinstance(update, dict):
-                    continue
+        with trace_ctx:
+            for chunk in incident_graph.stream(initial_state, stream_mode="updates", config=stream_config):
+                for node, update in chunk.items():
+                    if not isinstance(update, dict):
+                        continue
 
-                accumulated_steps += update.get("steps", 0)
-                cost_delta = update.get("cost_usd", 0.0)
-                accumulated_cost += cost_delta
+                    accumulated_steps += update.get("steps", 0)
+                    cost_delta = update.get("cost_usd", 0.0)
+                    accumulated_cost += cost_delta
 
-                # Generate typed semantic event
-                event_type = "agent_finished"
-                title = node.replace("_", " ").title()
-                summary = ""
-                event_data = {}
+                    # Generate typed semantic event
+                    event_type = "agent_finished"
+                    title = node.replace("_", " ").title()
+                    summary = ""
+                    event_data = {}
 
-                if node == "input_guard":
-                    event_type = "guardrail_executed"
-                    flags.extend(update.get("guardrail_flags", []))
-                    summary = f"Scanned alert. Flagged issues: {len(flags)}"
-                    event_data = {"guardrail_flags": flags}
+                    if node == "input_guard":
+                        event_type = "guardrail_executed"
+                        flags.extend(update.get("guardrail_flags", []))
+                        summary = f"Scanned alert. Flagged issues: {len(flags)}"
+                        event_data = {"guardrail_flags": flags}
 
-                elif node == "supervisor":
-                    event_type = "supervisor_planned"
-                    plan = update.get("plan", [])
-                    summary = f"Strategy formulated. Dispatched specialists: {', '.join(plan)}"
-                    event_data = {"plan": plan}
+                    elif node == "supervisor":
+                        event_type = "supervisor_planned"
+                        plan = update.get("plan", [])
+                        summary = f"Strategy formulated. Dispatched specialists: {', '.join(plan)}"
+                        event_data = {"plan": plan}
 
-                elif node in ("metrics_agent", "logs_agent", "runbook_agent"):
-                    event_type = "evidence_found"
-                    node_ev = update.get("evidence", [])
-                    for e in node_ev:
-                        collected_evidence.append(e.model_dump() if hasattr(e, "model_dump") else e)
-                    ev_count = len(node_ev)
-                    summary = f"Extracted {ev_count} factual evidence item(s)"
-                    event_data = {
-                        "evidence": [e.model_dump() if hasattr(e, "model_dump") else e for e in node_ev]
-                    }
+                    elif node in ("metrics_agent", "logs_agent", "runbook_agent"):
+                        event_type = "evidence_found"
+                        node_ev = update.get("evidence", [])
+                        for e in node_ev:
+                            collected_evidence.append(e.model_dump() if hasattr(e, "model_dump") else e)
+                        ev_count = len(node_ev)
+                        summary = f"Extracted {ev_count} factual evidence item(s)"
+                        event_data = {
+                            "evidence": [e.model_dump() if hasattr(e, "model_dump") else e for e in node_ev]
+                        }
 
-                elif node == "root_cause_agent":
-                    event_type = "hypothesis_synthesized"
-                    h = update.get("hypothesis")
-                    if h:
-                        hypothesis_dict = h.model_dump() if hasattr(h, "model_dump") else h
-                        summary = f"Diagnosis: {hypothesis_dict.get('root_cause')} (Confidence: {int(hypothesis_dict.get('confidence', 0)*100)}%)"
-                        event_data = {"hypothesis": hypothesis_dict}
+                    elif node == "root_cause_agent":
+                        event_type = "hypothesis_synthesized"
+                        h = update.get("hypothesis")
+                        if h:
+                            hypothesis_dict = h.model_dump() if hasattr(h, "model_dump") else h
+                            summary = f"Diagnosis: {hypothesis_dict.get('root_cause')} (Confidence: {int(hypothesis_dict.get('confidence', 0)*100)}%)"
+                            event_data = {"hypothesis": hypothesis_dict}
 
-                elif node == "output_guard":
-                    event_type = "guardrail_executed"
-                    flags.extend(update.get("guardrail_flags", []))
-                    h = update.get("hypothesis")
-                    if h:
-                        hypothesis_dict = h.model_dump() if hasattr(h, "model_dump") else h
-                    summary = "Evaluated hallucination & groundedness gate"
-                    event_data = {"guardrail_flags": flags, "hypothesis": hypothesis_dict}
+                    elif node == "output_guard":
+                        event_type = "guardrail_executed"
+                        flags.extend(update.get("guardrail_flags", []))
+                        h = update.get("hypothesis")
+                        if h:
+                            hypothesis_dict = h.model_dump() if hasattr(h, "model_dump") else h
+                        summary = "Evaluated hallucination & groundedness gate"
+                        event_data = {"guardrail_flags": flags, "hypothesis": hypothesis_dict}
 
-                elif node == "human_approval":
-                    appr = update.get("approval")
-                    if appr:
-                        approval_dict = appr
-                        event_type = "approval_required"
-                        summary = f"Action requires authorization: {appr.get('action', {}).get('type')}"
-                        event_data = {"approval": appr}
-                    else:
-                        summary = "No destructive remediation needed"
+                    elif node == "human_approval":
+                        appr = update.get("approval")
+                        if appr:
+                            approval_dict = appr
+                            event_type = "approval_required"
+                            summary = f"Action requires authorization: {appr.get('action', {}).get('type')}"
+                            event_data = {"approval": appr}
+                        else:
+                            summary = "No destructive remediation needed"
 
-                broadcast_event(
-                    incident_id,
-                    {
-                        "id": f"ev_{uuid.uuid4().hex[:6]}",
-                        "type": event_type,
-                        "node": node,
-                        "title": title,
-                        "summary": summary,
-                        "data": event_data,
-                        "cost_usd": round(accumulated_cost, 6),
-                        "steps": accumulated_steps,
-                        "timestamp": time.time(),
-                    },
-                )
+                    broadcast_event(
+                        incident_id,
+                        {
+                            "id": f"ev_{uuid.uuid4().hex[:6]}",
+                            "type": event_type,
+                            "node": node,
+                            "title": title,
+                            "summary": summary,
+                            "data": event_data,
+                            "cost_usd": round(accumulated_cost, 6),
+                            "steps": accumulated_steps,
+                            "timestamp": time.time(),
+                        },
+                    )
+
+        # Flush traces and get URL if Langfuse is active
+        if langfuse_client:
+            try:
+                langfuse_client.flush()
+                trace_url = langfuse_client.get_trace_url()
+            except Exception as e:  # noqa: BLE001
+                logger.debug(f"Langfuse trace retrieval deferred: {e}")
 
         latency_ms = (time.perf_counter() - t_start) * 1000
 
@@ -211,6 +274,7 @@ def run_incident_workflow(incident_id: str, alert: Alert):
                 "cost_usd": round(accumulated_cost, 6),
                 "latency_ms": round(latency_ms, 2),
                 "steps": accumulated_steps,
+                "langfuse_trace_url": trace_url,
             }
         )
 
@@ -229,6 +293,7 @@ def run_incident_workflow(incident_id: str, alert: Alert):
                     "cost_usd": round(accumulated_cost, 6),
                     "latency_ms": round(latency_ms, 2),
                     "steps": accumulated_steps,
+                    "langfuse_trace_url": trace_url,
                 },
                 "cost_usd": round(accumulated_cost, 6),
                 "steps": accumulated_steps,
@@ -308,6 +373,7 @@ def list_incidents():
             "created_at": inc.get("created_at"),
             "root_cause": inc.get("hypothesis", {}).get("root_cause") if inc.get("hypothesis") else None,
             "confidence": inc.get("hypothesis", {}).get("confidence") if inc.get("hypothesis") else None,
+            "langfuse_trace_url": inc.get("langfuse_trace_url"),
         }
         for inc_id, inc in sorted(INCIDENTS_DB.items(), key=lambda x: x[1].get("created_at", 0), reverse=True)
     ]

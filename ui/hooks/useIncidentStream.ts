@@ -22,6 +22,7 @@ export function useIncidentStream(incidentId: string | null) {
   const [costUsd, setCostUsd] = useState<number>(0);
   const [steps, setSteps] = useState<number>(0);
   const [latencyMs, setLatencyMs] = useState<number>(0);
+  const [langfuseTraceUrl, setLangfuseTraceUrl] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,6 +37,7 @@ export function useIncidentStream(incidentId: string | null) {
       setCostUsd(0);
       setSteps(0);
       setLatencyMs(0);
+      setLangfuseTraceUrl(null);
       setIsStreaming(false);
       setError(null);
       return;
@@ -84,6 +86,9 @@ export function useIncidentStream(incidentId: string | null) {
           if (d.latency_ms && typeof d.latency_ms === "number") {
             setLatencyMs(d.latency_ms);
           }
+          if (d.langfuse_trace_url && typeof d.langfuse_trace_url === "string") {
+            setLangfuseTraceUrl(d.langfuse_trace_url);
+          }
         }
 
         // Check terminal state
@@ -116,6 +121,7 @@ export function useIncidentStream(incidentId: string | null) {
           if (data.latency_ms) setLatencyMs(data.latency_ms);
           if (data.steps) setSteps(data.steps);
           if (data.events) setEvents(data.events);
+          if (data.langfuse_trace_url) setLangfuseTraceUrl(data.langfuse_trace_url);
         })
         .catch((err) => {
           if (!isMounted) return;
@@ -140,6 +146,7 @@ export function useIncidentStream(incidentId: string | null) {
     costUsd,
     steps,
     latencyMs,
+    langfuseTraceUrl,
     isStreaming,
     error,
   };

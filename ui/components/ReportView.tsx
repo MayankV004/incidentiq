@@ -213,19 +213,41 @@ export function ReportView({
 
       {/* Tab 3: Trace */}
       {activeTab === "trace" && (
-        <div className="p-6 space-y-2 font-mono text-xs">
-          {(incident?.events || []).map((ev, i) => (
-            <div
-              key={ev.id || i}
-              className="flex items-center justify-between py-2 border-b border-zinc-100 dark:border-zinc-800/40 text-zinc-700 dark:text-zinc-300"
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-zinc-400">{i + 1}.</span>
-                <span className="font-semibold text-zinc-900 dark:text-zinc-100">{ev.node}</span>
+        <div className="p-6 space-y-4 font-mono text-xs">
+          {incident?.langfuse_trace_url && (
+            <div className="p-3.5 rounded-lg bg-lime-400/10 border border-lime-400/30 flex items-center justify-between text-xs font-sans">
+              <div className="flex items-center gap-2.5">
+                <span className="w-2 h-2 rounded-full bg-lime-400 animate-pulse" />
+                <span className="text-zinc-800 dark:text-zinc-200 font-medium">
+                  Full LLM Waterfall Trace Available in Langfuse
+                </span>
               </div>
-              <span className="text-zinc-500 truncate max-w-sm">{ev.summary}</span>
+              <a
+                href={incident.langfuse_trace_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-1.5 rounded-lg bg-lime-400 hover:bg-lime-300 text-zinc-950 font-semibold text-xs transition-all flex items-center gap-1.5 shadow-[0_0_10px_rgba(163,230,53,0.35)] cursor-pointer"
+              >
+                <span>Open in Langfuse</span>
+                <span>↗</span>
+              </a>
             </div>
-          ))}
+          )}
+
+          <div className="space-y-2">
+            {(incident?.events || []).map((ev, i) => (
+              <div
+                key={ev.id || i}
+                className="flex items-center justify-between py-2 border-b border-zinc-100 dark:border-zinc-800/40 text-zinc-700 dark:text-zinc-300"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-zinc-400">{i + 1}.</span>
+                  <span className="font-semibold text-zinc-900 dark:text-zinc-100">{ev.node}</span>
+                </div>
+                <span className="text-zinc-500 truncate max-w-sm">{ev.summary}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

@@ -171,6 +171,9 @@ def _call_llm_for_diagnosis(
 
         # Opt-in Langfuse observability if keys are set in environment
         if os.getenv("LANGFUSE_PUBLIC_KEY") and os.getenv("LANGFUSE_SECRET_KEY"):
+            host = os.getenv("LANGFUSE_HOST") or os.getenv("LANGFUSE_BASE_URL", "https://cloud.langfuse.com")
+            os.environ["LANGFUSE_BASE_URL"] = host
+            os.environ["LANGFUSE_HOST"] = host
             if "langfuse" not in litellm.success_callback:
                 litellm.success_callback.append("langfuse")
             if "langfuse" not in litellm.failure_callback:

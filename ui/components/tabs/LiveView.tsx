@@ -38,6 +38,7 @@ export function LiveView({ scenarios, initialScenario }: LiveViewProps) {
     costUsd,
     steps,
     latencyMs,
+    langfuseTraceUrl,
     error,
   } = useIncidentStream(activeIncidentId);
 
@@ -141,7 +142,15 @@ export function LiveView({ scenarios, initialScenario }: LiveViewProps) {
         status === "remediation_executed" ||
         status === "rejected_by_human") && (
         <ReportView
-          incident={activeIncident}
+          incident={
+            activeIncident
+              ? {
+                  ...activeIncident,
+                  events,
+                  langfuse_trace_url: langfuseTraceUrl || activeIncident.langfuse_trace_url,
+                }
+              : null
+          }
           status={status}
           hypothesis={hypothesis}
           evidenceList={evidenceList}
