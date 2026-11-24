@@ -1,10 +1,14 @@
 # Database Design: IncidentIQ
 
-IncidentIQ supports a dual-engine architecture:
-1. **Local Development Target:** Lightweight, zero-dependency SQLite (`sqlite:///incidentiq.db`) with native JSON column support for instant developer onboarding and offline benchmark evaluation.
-2. **Production Deploy Target:** PostgreSQL 16 (via `postgresql+psycopg://`) managed through additive Alembic migrations (`alembic upgrade head`).
+## Deployed Demo Implementation (Single-Worker SQLite)
+- **Active Storage Engine:** Single-worker Uvicorn (`WORKERS=1`) backed by SQLite (`sqlite:///incidentiq.db` locally, `sqlite:////data/incidentiq.db` in Docker Compose via persistent volume `iiq_data`). PostgreSQL (`postgresql+psycopg://`), `pgvector`, and Redis are deferred out of the public cost-capped demo.
+- **Additive Alembic Migrations:** `0001_incidents` creates `incidents`, and `451ef2dd7538` creates `approvals`, `guardrail_events`, `llm_calls`, `tool_calls`, `eval_runs`, and `eval_results`. `alembic upgrade head` is idempotent on both clean and pre-initialized SQLite databases.
+- **Runtime Telemetry Writes:** Replay and live workflows populate `incidents`, `approvals`, `llm_calls`, `tool_calls` (with capability tokens redacted), and `guardrail_events`, and daily spend caps query persisted `IncidentRecord.cost_usd` directly so limits survive restarts.
+- **Backups:** Hot online SQLite backups and restores are supported via `scripts/backup_sqlite.sh` (using Python `sqlite3.Connection.backup`).
 
-Migrations are strictly additive (no disruptive drops) to ensure backwards-compatibility and safe production zero-downtime rollouts.
+---
+
+IncidentIQ also keeps PostgreSQL 16 compatibility (`postgresql+psycopg://`) in SQLAlchemy models and migrations for optional multi-node expansion.
 
 ## 1. Implemented Database Architecture & ER Diagram
 

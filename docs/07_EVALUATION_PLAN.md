@@ -12,7 +12,13 @@ Evaluation is the centerpiece of this project. Build it before tuning anything, 
 
 ## 2. Benchmark: IncidentBench-mini
 
-About 30 scenarios recorded from the demo shop.
+Currently comprises **8 curated scenarios** (`001`–`008` in `scenarios/`) covering all 6 fault categories plus 2 ambiguous abstention cases. Expansion to 30 scenarios (20 dev / 10 held-out) is tracked on the post-demo roadmap.
+
+Current `evals/splits.json` split across the 8 existing scenarios:
+- **`dev` (6 scenarios):** `001_orders_db_pool_exhaustion`, `002_payments_dependency_timeout`, `003_orders_slow_db_query`, `004_gateway_memory_leak`, `005_orders_cache_failure`, `006_ambiguous_transient_noise`
+- **`held_out` (2 scenarios):** `007_payments_bad_deploy_config`, `008_ambiguous_no_logs_found`
+
+*(Target 30-scenario expansion layout for reference:)*
 
 | Fault type | Variants | Notes |
 |---|---|---|

@@ -37,9 +37,9 @@ The agent reads untrusted text (logs, runbooks, alerts) and can influence action
 | T8 | Hallucinated conclusions | Confident wrong root cause | Citation requirement, groundedness gate, abstention |
 | T9 | Cost abuse / DoS | Public endpoint spammed to burn budget | Rate limits, daily cost cap, per-incident budget, step limit |
 | T10 | Runaway agent loops | Agent keeps calling tools | `MAX_AGENT_STEPS`, budget guard |
-| T11 | Secret leakage in repo | Keys committed | `.env` ignored, `.env.example`, secret scanning in CI |
-| T12 | Supply chain | Malicious dependency | Pin versions, avoid brand-new releases, lockfile, dependency audit in CI |
-| T13 | Exposed admin surfaces | Open Grafana or Langfuse | Basic auth behind Caddy, not published directly |
+| T11 | Secret leakage in repo / images | Keys committed or baked into Docker context | `.env` ignored, `.env.example` empty placeholders, root & `ui/` `.dockerignore`, fail-fast startup when `API_KEY` or `APPROVAL_TOKEN_SECRET` is unset, `X-API-Key` kept server-side in Next.js proxy |
+| T12 | Supply chain | Malicious dependency | Pin exact versions, lockfiles (`uv.lock`, `ui/pnpm-lock.yaml`), frozen installs in multi-stage Dockerfiles |
+| T13 | Exposed admin / metrics / spoofed rate-limit headers | Open `/metrics`, `/admin*`, or `X-Forwarded-For` spoofing | Caddy automatic HTTPS, security headers, 64KB body cap, basic auth on `/metrics*` & `/admin*`, `X-Forwarded-For` parsed right-to-left only from `TRUSTED_PROXY_IPS` CIDRs |
 
 ## 5. Guardrail layers
 

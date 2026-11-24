@@ -70,9 +70,11 @@ flowchart TD
 ```
 
 Implementation notes:
-- Parallel fan-out: the supervisor adds edges to the three specialists; LangGraph runs them concurrently and merges `evidence` through the reducer.
-- Checkpointer (Postgres or SQLite) enables the `human_approval` interrupt and resume.
-- `steps` and `cost_usd` are checked in each node; exceeding limits routes to `abstain_or_reject` with status `budget_exceeded`.
+- Parallel fan-out: the supervisor runs deterministically (zero LLM cost) and adds edges to the three specialists; LangGraph runs them concurrently and merges `evidence` through the reducer.
+- Per-call Scenario Isolation: `scenario_id` is stored on `IncidentState` and passed as a validated per-call argument through `mcp_client.py` to `metrics_server` and `logs_server` (no process-wide `os.environ["SCENARIO_ID"]` mutation). `metrics_server` also verifies `metrics.json["service"]` matches the requested service.
+- Knowledge Retrieval (BM25): `runbook_agent` uses in-memory Okapi BM25 lexical ranking with Jaccard overlap and service metadata boosting (`incidentiq/rag/engine.py`) and scans retrieved chunks for prompt injection before synthesis; dense vector embeddings and cross-encoders are deferred.
+- `steps` and `cost_usd` are checked dynamically against `MAX_AGENT_STEPS`, `INCIDENT_BUDGET_USD`, `ABSTAIN_THRESHOLD`, and `GROUND_THRESHOLD` (read from env); exceeding limits routes to `budget_exceeded` with honest abstention.
+- Prompt Leakage Guard: `output_guard_node` runs both groundedness verification and `GuardrailManager.scan_prompt_leakage` before finalizing output.
 
 ## 3. Nodes in detail
 

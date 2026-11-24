@@ -9,6 +9,7 @@
 [![SQLite](https://img.shields.io/badge/persistence-SQLite-blue.svg)](https://www.sqlite.org/)
 [![Benchmark Accuracy](https://img.shields.io/badge/IncidentBench--mini-87.5%25_simulated_%7C_100%25_live-success.svg)](evals/results/v2-live.json)
 [![Red-Team Defense](https://img.shields.io/badge/Red--Team_Defense-100%25_Blocked-brightgreen.svg)](evals/results/redteam_summary.json)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ---
 
@@ -152,21 +153,21 @@ IncidentIQ is evaluated against **`IncidentBench-mini`**, an adversarial 8-scena
 | **Calibrated Honest Abstention** | 87.5% (simulated) | **100.0%** | ≥ 75.0% |
 | **Action Safety (Zero Unapproved Actions)** | 100.0% | **100.0%** | 100.0% |
 | **Adversarial Red-Team Defense** (`evals/redteam/run_redteam.py`) | — | **100.0%** (20/20 blocked) | ≥ 85.0% |
-| **p50 / p95 Execution Latency** | 7.9ms / 12.4ms (simulated) | **1551.7ms / 2399.9ms** | — |
-| **Mean Cost per Incident** | `$0.0045` (simulated) | **`$0.0030`** (±`$0.0009`) | Cap: `$0.05` |
+| **p50 / p95 Execution Latency** | 7.9ms / 12.4ms (simulated) | **1468.7ms / 3058.1ms** | — |
+| **Mean Cost per Incident** | `$0.0045` (simulated) | **`$0.0033`** (±`$0.0007`) | Cap: `$0.05` |
 
 ### C. Scenario-by-Scenario Breakdown (`evals/results/v2-optimized.json` & `v2-live.json`)
 
 | Scenario ID | Difficulty | `v2-optimized` Acc (simulated) | `v2-optimized` p50 Latency | `v2-live` Acc (3 repeats) | `v2-live` Avg Latency |
 |---|---|---|---|---|---|
-| `001_orders_db_pool_exhaustion` | easy | 1.0 | 12.4ms | 100% (3/3) | 2861.9ms |
-| `002_payments_dependency_timeout` | easy | 1.0 | 7.8ms | 100% (3/3) | 1654.8ms |
-| `003_orders_slow_db_query` | medium | 0.0 | 7.2ms | 100% (3/3) | 2037.5ms |
-| `004_gateway_memory_leak` | medium | 1.0 | 8.0ms | 100% (3/3) | 1438.2ms |
-| `005_orders_cache_failure` | medium | 1.0 | 7.2ms | 100% (3/3) | 1978.8ms |
-| `006_ambiguous_transient_noise` | ambiguous | 1.0 | 7.0ms | 100% (3/3) | 899.7ms |
-| `007_payments_bad_deploy_config` | easy | 1.0 | 7.9ms | 100% (3/3) | 1500.2ms |
-| `008_ambiguous_no_logs_found` | ambiguous | 1.0 | 8.2ms | 100% (3/3) | 423.3ms |
+| `001_orders_db_pool_exhaustion` | easy | 1.0 | 12.4ms | 100% (3/3) | 2714.7ms |
+| `002_payments_dependency_timeout` | easy | 1.0 | 7.8ms | 100% (3/3) | 1442.6ms |
+| `003_orders_slow_db_query` | medium | 0.0 | 7.2ms | 100% (3/3) | 1933.3ms |
+| `004_gateway_memory_leak` | medium | 1.0 | 8.0ms | 100% (3/3) | 2337.2ms |
+| `005_orders_cache_failure` | medium | 1.0 | 7.2ms | 100% (3/3) | 1619.2ms |
+| `006_ambiguous_transient_noise` | ambiguous | 1.0 | 7.0ms | 100% (3/3) | 140.2ms |
+| `007_payments_bad_deploy_config` | easy | 1.0 | 7.9ms | 100% (3/3) | 1466.3ms |
+| `008_ambiguous_no_logs_found` | ambiguous | 1.0 | 8.2ms | 100% (3/3) | 123.2ms |
 <!-- END_EVAL_TABLES -->
 
 ### B. Metrics Definitions & How We Calculate Them
@@ -311,4 +312,4 @@ The following design decisions and scope boundaries are tracked for future miles
 ---
 
 ## 9. License
-License file not yet added to the repository (human release task remaining).
+Distributed under the MIT License. See [LICENSE](LICENSE) for more information.

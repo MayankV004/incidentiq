@@ -1,6 +1,13 @@
 # API Specification: IncidentIQ
 
-Base URL: `/v1`. JSON over HTTP. Streaming via Server-Sent Events (SSE). Auth for the public demo: a static API key header `X-API-Key` (basic protection, plus rate limits). FastAPI generates the OpenAPI document at `/docs`.
+Base URL: `/v1`. JSON over HTTP. Streaming via Server-Sent Events (SSE). Auth for the public demo: a static API key header `X-API-Key` verified with constant-time comparison (`hmac.compare_digest`), rate limits keyed on trusted-proxy client IP, and fail-fast startup enforcement (`API_KEY` and `APPROVAL_TOKEN_SECRET` must be set). FastAPI generates the OpenAPI document at `/docs`.
+
+## 0. Browser Proxy Architecture & Implementation Alignment
+- **Next.js Server-Side BFF Proxy (`/api/v1/[...path]`):** All browser calls go same-origin to `/api/v1/*` on the Next.js server, which injects `X-API-Key` from server environment (`API_KEY`), forwards upstream to `API_INTERNAL_URL`, and streams `text/event-stream` directly without ever exposing `API_KEY` to the browser.
+- **Standard Error Envelope:** HTTP `400`, `401`, `403`, `404`, `409`, `422` (`VALIDATION_ERROR`), `429` (`RATE_LIMIT_EXCEEDED` / `BUDGET_EXCEEDED`), and `500` (`INTERNAL_ERROR`) all return `{ "error": { "code", "message", "details" } }`.
+- **Input Validation (`POST /v1/incidents`):** Rejects unknown services outside `ALLOWED_SERVICES`, traversal payloads in `scenario_id`, empty/oversized `symptom`, and `window_end <= window_start` with HTTP `400`.
+- **Stream Endpoint & Approvals:** Live SSE endpoint is `GET /v1/incidents/{id}/stream` (terminating cleanly on `completed`, `awaiting_approval`, `abstained`, `budget_exceeded`, `failed`, `remediation_executed`, and `rejected_by_human`). `POST /v1/incidents/{id}/approval` accepts `approval_id` and `decision` (`"approve"` | `"reject"`), keeping raw capability tokens strictly server-side.
+- **Readiness (`/readyz`):** Probes SQLite (`SELECT 1`) and (when `MCP_MODE=http`) connectivity to `mcp-metrics`, `mcp-logs`, and `mcp-remediation`, returning HTTP `503` if any dependency is unavailable.
 
 ## 1. Conventions
 

@@ -9,23 +9,19 @@
 | prod-demo | Public demo | Oracle Cloud VM with Docker Compose and Caddy |
 | aws (optional) | Terraform showcase | EC2 or ECS + RDS |
 
-## 2. Services (Docker Compose)
+## 2. Deployed Demo Stack (`deploy/docker-compose.yml`)
 
-| Service | Image or build | Port (internal) | Notes |
+For the single-node cost-capped demo, the compose stack runs SQLite (`/data/incidentiq.db`, single Uvicorn worker `--workers 1`) without separate Postgres, Redis, Prometheus, or Grafana containers:
+
+| Service | Image / Dockerfile | Port (internal) | Notes |
 |---|---|---|---|
-| gateway, orders, payments, fake-external | build `shop/` | 8001-8004 | Demo shop |
-| traffic-gen | build `faults/` | none | Steady baseline traffic |
-| postgres | pgvector image | 5432 | Shop DB and app DB (separate databases) |
-| redis | redis:7 | 6379 | Cache, rate limit |
-| prometheus | prom/prometheus | 9090 | Scrapes shop and IncidentIQ |
-| grafana | grafana/grafana | 3000 | Dashboards |
-| langfuse (+ its DB) | langfuse | 3001 | Or use Langfuse cloud |
-| mcp-metrics, mcp-logs, mcp-remediation | build `mcp_servers/` | 9101-9103 | Internal only |
-| incidentiq-api | build `incidentiq/` | 8000 | FastAPI |
-| ui | build `ui/` | 3000 | Next.js + TypeScript (Node 20 Alpine / standalone) |
-| caddy | caddy:2 | 80, 443 | Only public entry point (prod) |
+| `gateway`, `orders`, `payments`, `fake-external` | `deploy/Dockerfile.python` | 8001–8004 | Internal demo shop microservices |
+| `mcp-metrics`, `mcp-logs`, `mcp-remediation` | `deploy/Dockerfile.python` | 9101–9103 | Internal FastMCP Streamable HTTP servers |
+| `incidentiq-api` | `deploy/Dockerfile.python` | 8000 | Single-worker FastAPI + SQLite (`iiq_data:/data`) |
+| `ui` | `deploy/Dockerfile.ui` (`node:22-alpine`) | 3000 | Next.js 16 + BFF `/api/v1` proxy (injects `API_KEY` server-side) |
+| `caddy` | `caddy:2-alpine` | 80, 443 | Automatic HTTPS (`DEMO_DOMAIN`), HSTS/headers, 64KB body cap, basic auth on `/metrics*` & `/admin*`, `flush_interval -1` for SSE |
 
-Only Caddy is exposed publicly. Everything else stays on the internal Docker network.
+Only Caddy exposes host ports `80` and `443`. All Docker services define healthchecks, `restart: unless-stopped`, memory/CPU limits, and JSON log rotation (`max-size: 10m`, `max-file: 3`).
 
 ## 3. Environment variables (`.env.example`)
 
@@ -65,11 +61,11 @@ Never commit `.env`. Add secret scanning to CI.
 2. **Network:** open TCP 80 and 443 in the VCN security list **and** in the VM firewall (`iptables`/`ufw`; Oracle images often block ports by default).
 3. **Install:** Docker Engine and the Compose plugin.
 4. **ARM check:** confirm every image supports `linux/arm64` (pgvector, Langfuse, Prometheus, Grafana and Caddy do; verify your own builds with `docker buildx`).
-5. **Deploy:** clone repo, create `.env`, run `docker compose -f deploy/docker-compose.prod.yml up -d --build`.
-6. **Domain and HTTPS:** point a domain or free subdomain to the VM IP; Caddy obtains certificates automatically.
-7. **Pre-embed KB** at build time to avoid slow first requests on ARM CPU.
-8. **Harden:** SSH keys only, disable password login, fail2ban optional, automatic security updates, basic auth on Grafana and Langfuse.
-9. **Backups:** nightly `pg_dump` to object storage or a local rotated folder.
+5. **Deploy:** clone repo, create `.env` (including required `API_KEY`, `APPROVAL_TOKEN_SECRET`, `DEMO_DOMAIN`, `METRICS_BASIC_AUTH_USER`, `METRICS_BASIC_AUTH_HASH`), run `docker compose -f deploy/docker-compose.yml up -d --build --wait`.
+6. **Domain and HTTPS:** point a domain or free subdomain to the VM IP; Caddy (`{$DEMO_DOMAIN:localhost}`) obtains certificates automatically.
+7. **BM25 Knowledge Base:** `incidentiq/rag/engine.py` indexes markdown runbooks/postmortems in memory in milliseconds without heavy embedding downloads.
+8. **Harden:** SSH keys only, disable password login, fail2ban optional, automatic security updates, basic auth on `/metrics*` and `/admin*`.
+9. **Backups:** nightly `scripts/backup_sqlite.sh /data/incidentiq.db` (or host-mounted volume backup) to object storage or a local rotated folder.
 
 ### Caddyfile sketch
 
