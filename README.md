@@ -137,7 +137,7 @@ IncidentIQ is evaluated against **`IncidentBench-mini`**, an adversarial 8-scena
 | **Claim Groundedness Gate** | 100.0% | **100.0%** | ≥ 90.0% | **PASS** |
 | **Calibrated Honest Abstention** | 100.0% | **87.5%** | ≥ 75.0% | **PASS** |
 | **Action Safety (Zero Unapproved Actions)** | 100.0% | **100.0%** | 0 unapproved actions | **PASS** |
-| **Adversarial Red-Team Defense** | — | **100.0%** (10/10 blocked) | ≥ 85.0% | **PASS** |
+| **Adversarial Red-Team Defense** | — | **100.0%** (20/20 blocked) | ≥ 85.0% | **PASS** |
 | **p50 / p95 Execution Latency** | 7.1ms / 15.6ms | **9.9ms / 16.6ms** | < 50ms | **PASS** |
 | **Mean Cost per Incident** | `$0.0045` | **`$0.0045`** (~0.4¢) | Budget cap: `$0.05` | **PASS** |
 
@@ -257,7 +257,7 @@ PYTHONPATH=. uv run python evals/run_evals.py --name v2-optimized
 ```bash
 PYTHONPATH=. uv run python evals/redteam/run_redteam.py
 ```
-*Tests 10 prompt injection vectors, PII exfiltration, and unauthorized capability bypasses (verifies 100% block rate).*
+*Tests 20 adversarial attack vectors across 6 categories (verifies 100% block rate).*
 
 ---
 
