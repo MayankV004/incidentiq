@@ -283,3 +283,59 @@ def test_sse_stream_terminates_on_budget_exceeded():
         INCIDENTS_DB.pop(mock_id, None)
 
 
+def test_create_incident_input_validation_returns_400():
+    """BLOCKER-7: Invalid service, scenario_id, symptom, or window_end <= window_start must return 400."""
+    bad_payloads = [
+        {"service": "payments' OR 1=1; --", "symptom": "high latency"},
+        {"service": "orders", "symptom": "high latency", "scenario_id": "../../etc/passwd"},
+        {"service": "orders", "symptom": "   "},
+        {
+            "service": "orders",
+            "symptom": "high latency",
+            "window_start": "2026-11-24T12:30:00Z",
+            "window_end": "2026-11-24T12:00:00Z",
+        },
+    ]
+    for payload in bad_payloads:
+        res = client.post("/v1/incidents", json=payload, headers=AUTH_HEADERS)
+        assert res.status_code == 400, f"Expected 400 for {payload}, got {res.status_code}"
+        data = res.json()
+        assert "error" in data and data["error"]["code"] == "INVALID_INPUT"
+
+
+def test_expanded_pii_and_prompt_leakage_blocking(monkeypatch):
+    """BLOCKER-7: Expand PII scrubbing (service+symptom) and block prompt/secret leaks in output_guard_node."""
+    from incidentiq.agents.nodes import output_guard_node
+    from incidentiq.guardrails.guards import GuardrailManager
+    from incidentiq.schemas.models import Action, Alert, Evidence, Hypothesis
+
+    raw_alert = Alert(
+        service="orders (555) 123-4567",
+        symptom="User SSN 123-45-6789 leaked Bearer tok_secret12345 and sk-abcdef1234567890",
+        window_start="2026-11-24T12:00:00Z",
+        window_end="2026-11-24T12:30:00Z",
+    )
+    clean_alert, flags = GuardrailManager.process_input_alert(raw_alert)
+    assert "(555)" not in clean_alert.service
+    assert "123-45-6789" not in clean_alert.symptom
+    assert "tok_secret12345" not in clean_alert.symptom
+    assert "sk-abcdef1234567890" not in clean_alert.symptom
+    assert "pii_redacted_in_alert" in flags
+
+    monkeypatch.setenv("API_KEY", "super_secret_demo_key_999")
+    ev = Evidence(id="ev_1", kind="metric", summary="m1", source_ref="mcp:1")
+    leaked_hyp = Hypothesis(
+        category="db_pool_exhaustion",
+        confidence=0.95,
+        reasoning="Root cause found; leaked secret super_secret_demo_key_999",
+        evidence_ids=["ev_1"],
+        suggested_action=Action(type="restart_service", target="orders", detail="x"),
+        abstained=False,
+    )
+    out = output_guard_node({"hypothesis": leaked_hyp, "evidence": [ev]})
+    assert out["hypothesis"].abstained is True
+    assert out["hypothesis"].suggested_action is None
+    assert "super_secret_demo_key_999" not in out["hypothesis"].reasoning
+    assert any("leak" in f for f in out["guardrail_flags"])
+
+

@@ -1,12 +1,21 @@
+import os
 import re
 
 from incidentiq.schemas.models import Alert, Evidence, Hypothesis
 
-# Common PII Patterns (Email, Phone, Credit Card, SSN)
+# Common PII Patterns (Email, Phone incl. parenthesized, SSN, Credit Card, API/Bearer tokens)
 PII_PATTERNS = [
     (r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b", "[REDACTED_EMAIL]"),
-    (r"\b\d{3}[-.\s]??\d{3}[-.\s]??\d{4}\b", "[REDACTED_PHONE]"),
+    (
+        r"(?:\+?\d{1,3}[\s.-]?)?(?:\(\d{3}\)\s?|\b\d{3}[\s.-]?)\d{3}[\s.-]?\d{4}\b",
+        "[REDACTED_PHONE]",
+    ),
+    (r"\b\d{3}-\d{2}-\d{4}\b", "[REDACTED_SSN]"),
     (r"\b(?:\d{4}[-\s]?){3}\d{4}\b", "[REDACTED_CARD]"),
+    (r"\bBearer\s+[A-Za-z0-9._~+/-]{8,}=*", "Bearer [REDACTED_TOKEN]"),
+    (r"\b(?:sk|pk|gsk|rk|xox[bpa]|ghp|gho)_[A-Za-z0-9_-]{8,}\b", "[REDACTED_API_KEY]"),
+    (r"\bsk-[A-Za-z0-9_-]{12,}\b", "[REDACTED_API_KEY]"),
+    (r"\bAKIA[0-9A-Z]{16}\b", "[REDACTED_API_KEY]"),
 ]
 
 # Injection Signatures (Prompt injection detection heuristics)
@@ -31,18 +40,35 @@ class GuardrailManager:
 
     @staticmethod
     def scan_prompt_leakage(text: str) -> tuple[bool, str | None]:
-        """Detects whether system prompt or capability secret leaked into text."""
+        """Detects whether system prompt or configured secrets leaked into text."""
+        if not text:
+            return False, None
         markers = [
             "root cause synthesis agent",
+            "you are an autonomous incident",
             "incidentiq capability secret",
             "approval_token_secret",
             "api_key=",
             "dev_local_secret_key",
+            "cap_",
         ]
         text_lower = text.lower()
         for m in markers:
             if m in text_lower:
                 return True, f"System prompt/secret leakage detected: {m}"
+
+        for env_var in (
+            "API_KEY",
+            "APPROVAL_TOKEN_SECRET",
+            "GROQ_API_KEY",
+            "LLM_API_KEY_PRIMARY",
+            "LLM_API_KEY_FALLBACK",
+            "LLM_API_KEY_JUDGE",
+        ):
+            val = os.getenv(env_var, "").strip()
+            if len(val) >= 8 and val in text:
+                return True, f"Runtime secret ({env_var}) leakage detected"
+
         return False, None
 
     @staticmethod
@@ -66,22 +92,28 @@ class GuardrailManager:
 
     @classmethod
     def process_input_alert(cls, alert: Alert) -> tuple[Alert, list[str]]:
-        """Input Guardrail: Validates schemas, redacts PII, and flags prompt injections."""
+        """Input Guardrail: Validates schemas, redacts PII, and flags prompt injections across service & symptom."""
         flags: list[str] = []
 
-        # Redact PII in symptom
-        clean_symptom, had_pii = cls.redact_pii(alert.symptom)
-        if had_pii:
+        # Redact PII in service and symptom
+        clean_service, had_svc_pii = cls.redact_pii(alert.service)
+        clean_symptom, had_sym_pii = cls.redact_pii(alert.symptom)
+        if had_svc_pii or had_sym_pii:
             flags.append("pii_redacted_in_alert")
 
-        # Scan for injection
-        is_injection, reason = cls.scan_injection(alert.symptom)
-        if is_injection:
+        # Scan for injection in both service and symptom
+        svc_inj, svc_reason = cls.scan_injection(alert.service)
+        sym_inj, sym_reason = cls.scan_injection(alert.symptom)
+        if svc_inj or sym_inj:
+            reason = svc_reason or sym_reason
             flags.append(f"prompt_injection_flagged: {reason}")
-            clean_symptom = "[QUARANTINED_POTENTIAL_INJECTION]"
+            if sym_inj:
+                clean_symptom = "[QUARANTINED_POTENTIAL_INJECTION]"
+            if svc_inj:
+                clean_service = "[QUARANTINED_POTENTIAL_INJECTION]"
 
         clean_alert = Alert(
-            service=alert.service,
+            service=clean_service,
             symptom=clean_symptom,
             window_start=alert.window_start,
             window_end=alert.window_end,

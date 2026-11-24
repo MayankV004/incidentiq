@@ -162,12 +162,18 @@ def runbook_agent_node(state: IncidentState) -> dict[str, Any]:
     top_chunks = rag.retrieve(query=query, service=service, top_k=2)
 
     new_evidence: list[Evidence] = []
+    guardrail_flags: list[str] = []
     for chunk in top_chunks:
+        is_injection, reason = GuardrailManager.scan_injection(chunk.content)
+        content_preview = chunk.content[:220]
+        if is_injection:
+            guardrail_flags.append(f"runbook_injection_flagged: {reason}")
+            content_preview = "[QUARANTINED_POTENTIAL_INJECTION]"
         ev_id = f"ev_kb_{chunk.chunk_id}"
         ev = Evidence(
             id=ev_id,
             kind="runbook" if "runbook" in chunk.doc_title.lower() else "postmortem",
-            summary=f"Matched playbook '{chunk.doc_title}' (relevance score: {chunk.score}): {chunk.content[:220]}...",
+            summary=f"Matched playbook '{chunk.doc_title}' (relevance score: {chunk.score}): {content_preview}...",
             source_ref=f"kb:{chunk.chunk_id}",
             data={"score": chunk.score, "category": chunk.category},
         )
@@ -175,6 +181,7 @@ def runbook_agent_node(state: IncidentState) -> dict[str, Any]:
 
     return {
         "evidence": new_evidence,
+        "guardrail_flags": guardrail_flags,
         "cost_usd": 0.0005,
         "steps": 1,
     }
@@ -495,7 +502,7 @@ def get_ground_threshold() -> float:
 
 
 def output_guard_node(state: IncidentState) -> dict[str, Any]:
-    """Output Guard: Verifies claim groundedness against cited evidence IDs."""
+    """Output Guard: Verifies claim groundedness and blocks prompt/secret leakage."""
     hypothesis = state["hypothesis"]
     if hypothesis is None:
         return {"steps": 1}
@@ -506,6 +513,27 @@ def output_guard_node(state: IncidentState) -> dict[str, Any]:
         confidence_threshold=get_abstain_threshold(),
         ground_threshold=get_ground_threshold(),
     )
+
+    # Check output text fields for prompt or runtime secret leakage
+    texts_to_check = [
+        verified_hypothesis.reasoning or "",
+        verified_hypothesis.abstain_reason or "",
+        verified_hypothesis.suggested_action.detail
+        if verified_hypothesis.suggested_action
+        else "",
+    ]
+    for txt in texts_to_check:
+        leaked, leak_reason = GuardrailManager.scan_prompt_leakage(txt)
+        if leaked:
+            verified_hypothesis.abstained = True
+            verified_hypothesis.abstain_reason = (
+                "Output blocked by prompt/secret leakage guard."
+            )
+            verified_hypothesis.reasoning = "[REDACTED_PROMPT_LEAKAGE]"
+            verified_hypothesis.suggested_action = None
+            flags.append(f"prompt_leakage_blocked: {leak_reason}")
+            break
+
     return {
         "hypothesis": verified_hypothesis,
         "guardrail_flags": flags,

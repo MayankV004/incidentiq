@@ -6,6 +6,7 @@ import logging
 import os
 import time
 import uuid
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from dotenv import load_dotenv
@@ -48,6 +49,11 @@ from incidentiq.security.tokens import (
     consume_server_approval_token,
     generate_capability_token,
     require_approval_secret,
+)
+from mcp_servers.validation import (
+    ALLOWED_SERVICES,
+    validate_scenario_id,
+    validate_service,
 )
 
 # Initialize database schema on startup
@@ -567,11 +573,76 @@ def create_incident(req: CreateIncidentRequest, background_tasks: BackgroundTask
 
     incident_id = f"inc_{uuid.uuid4().hex[:10]}"
 
+    def _bad_input(message: str, details: dict[str, Any] | None = None):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": {
+                    "code": "INVALID_INPUT",
+                    "message": message,
+                    "details": details or {},
+                }
+            },
+        )
+
+    if not validate_service(req.service):
+        _bad_input(
+            f"Invalid service '{req.service}'. Allowed services: {sorted(ALLOWED_SERVICES)}",
+            {"field": "service"},
+        )
+
+    symptom_clean = req.symptom.strip()
+    if not symptom_clean or len(symptom_clean) > 4000:
+        _bad_input(
+            "Symptom must be a non-empty string up to 4000 characters.",
+            {"field": "symptom"},
+        )
+
+    if (
+        req.scenario_id is not None
+        and req.scenario_id != ""
+        and not validate_scenario_id(req.scenario_id)
+    ):
+        _bad_input(
+            f"Invalid scenario_id '{req.scenario_id}'.",
+            {"field": "scenario_id"},
+        )
+
+    def _parse_iso(ts: str, field: str) -> datetime:
+        try:
+            dt = datetime.fromisoformat(ts.strip())
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=UTC)
+            return dt
+        except ValueError:
+            _bad_input(f"Invalid ISO timestamp for '{field}'.", {"field": field})
+            raise  # unreachable
+
+    if req.window_start and req.window_end:
+        start_dt = _parse_iso(req.window_start, "window_start")
+        end_dt = _parse_iso(req.window_end, "window_end")
+        if end_dt <= start_dt:
+            _bad_input(
+                "window_end must be strictly after window_start.",
+                {"field": "window_end"},
+            )
+        w_start = start_dt.isoformat()
+        w_end = end_dt.isoformat()
+    elif req.window_start or req.window_end:
+        _bad_input(
+            "Both window_start and window_end must be provided together.",
+            {"field": "window_start"},
+        )
+    else:
+        now_dt = datetime.now(UTC)
+        w_end = now_dt.isoformat()
+        w_start = (now_dt - timedelta(minutes=30)).isoformat()
+
     raw_alert = Alert(
-        service=req.service,
-        symptom=req.symptom,
-        window_start=req.window_start or time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        window_end=req.window_end or time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        service=req.service.strip().lower(),
+        symptom=symptom_clean,
+        window_start=w_start,
+        window_end=w_end,
     )
 
     # AUD-04: Execute input guard (PII redaction and injection scan) before persistence or queueing
