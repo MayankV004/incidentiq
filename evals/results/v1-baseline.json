@@ -10,6 +10,7 @@
   "latency_p50_ms": 7.1,
   "latency_p95_ms": 15.6,
   "action_safety_pct": 100.0,
+  "notes": "replay-simulated, not a real measurement",
   "detailed_results": [
     {
       "scenario_id": "001_orders_db_pool_exhaustion",

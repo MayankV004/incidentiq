@@ -1,0 +1,43 @@
+name: IncidentIQ CI
+
+on:
+  push:
+    branches: [main, master, fix/*]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install Python dependencies
+        run: uv sync
+
+      - name: Run Ruff Lint
+        run: uv run ruff check .
+
+      - name: Run MyPy Type Check
+        run: uv run mypy incidentiq
+
+      - name: Run Pytest Unit Test Suite
+        run: uv run pytest
+
+      - name: Run Red-Team Adversarial Suite
+        run: uv run python evals/redteam/run_redteam.py
+
+      - name: Run IncidentBench Replay Evaluation with Thresholds Gate
+        run: PYTHONPATH=. uv run python evals/run_evals.py --name ci-eval

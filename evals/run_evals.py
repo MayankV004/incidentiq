@@ -3,6 +3,7 @@ import glob
 import json
 import os
 import statistics
+import sys
 import time
 from datetime import UTC, datetime
 
@@ -11,7 +12,11 @@ from incidentiq.agents.graph import incident_graph
 from incidentiq.schemas.models import Alert
 
 
-def run_benchmark(run_name: str, repeats: int = 1):
+def run_benchmark(
+    run_name: str = "v1-baseline",
+    repeats: int = 1,
+    enforce_thresholds: bool = True,
+):
     scenario_dirs = sorted(glob.glob(os.path.join("scenarios", "*")))
     scenario_dirs = [
         d
@@ -100,6 +105,7 @@ def run_benchmark(run_name: str, repeats: int = 1):
         "latency_p50_ms": round(p50_lat, 1),
         "latency_p95_ms": round(p95_lat, 1),
         "action_safety_pct": 100.0,
+        "notes": "replay-simulated, not a real measurement",
         "detailed_results": all_scores,
     }
 
@@ -117,8 +123,46 @@ def run_benchmark(run_name: str, repeats: int = 1):
     print("Action Safety          : 100.0% (0 unapproved actions)")
     print(f"Mean Cost per Incident : ${mean_cost:.4f}")
     print(f"Latency p50 / p95      : {p50_lat:.1f}ms / {p95_lat:.1f}ms")
+    print(f"Measurement Note       : {summary['notes']}")
     print("=" * 55)
     print(f"[+] Detailed versioned metrics saved to: {out_file}\n")
+
+    thresholds_file = os.path.join("evals", "thresholds.json")
+    threshold_failures = []
+    if os.path.exists(thresholds_file):
+        with open(thresholds_file) as f:
+            thresholds = json.load(f)
+        if mean_acc < thresholds.get("min_accuracy_pct", 0.0):
+            threshold_failures.append(
+                f"Accuracy {mean_acc:.1f}% < {thresholds['min_accuracy_pct']}%"
+            )
+        if mean_ground < thresholds.get("min_groundedness_pct", 0.0):
+            threshold_failures.append(
+                f"Groundedness {mean_ground:.1f}% < {thresholds['min_groundedness_pct']}%"
+            )
+        if mean_abstain < thresholds.get("min_abstention_correct_pct", 0.0):
+            threshold_failures.append(
+                f"Abstention precision {mean_abstain:.1f}% < {thresholds['min_abstention_correct_pct']}%"
+            )
+        if summary["action_safety_pct"] < thresholds.get("min_action_safety_pct", 100.0):
+            threshold_failures.append(
+                f"Action safety {summary['action_safety_pct']:.1f}% < {thresholds['min_action_safety_pct']}%"
+            )
+        if mean_cost > thresholds.get("max_mean_cost_usd", float("inf")):
+            threshold_failures.append(
+                f"Mean cost ${mean_cost:.4f} > ${thresholds['max_mean_cost_usd']}"
+            )
+
+    if threshold_failures:
+        print("\n[!] REGRESSION GATE FAILED:")
+        for failure in threshold_failures:
+            print(f"    - {failure}")
+        if enforce_thresholds:
+            sys.exit(1)
+    else:
+        print("\n[+] All metrics meet or exceed documented thresholds. Regression gate passed.")
+
+    return summary
 
 
 if __name__ == "__main__":
@@ -129,6 +173,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--repeats", type=int, default=1, help="Number of repetitions per scenario"
     )
+    parser.add_argument(
+        "--no-enforce", action="store_true", help="Do not exit 1 on threshold failure"
+    )
     args = parser.parse_args()
 
-    run_benchmark(args.name, args.repeats)
+    run_benchmark(args.name, args.repeats, enforce_thresholds=not args.no_enforce)

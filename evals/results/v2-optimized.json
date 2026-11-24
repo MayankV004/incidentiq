@@ -1,15 +1,16 @@
 {
   "run_name": "v2-optimized",
-  "timestamp": "2026-11-24T12:16:52.865181+00:00",
+  "timestamp": "2026-11-24T15:07:14.050570+00:00",
   "total_scenarios": 8,
   "total_runs": 8,
   "accuracy_pct": 87.5,
   "groundedness_pct": 100.0,
   "abstention_correct_pct": 87.5,
   "mean_cost_usd": 0.0045,
-  "latency_p50_ms": 5.1,
-  "latency_p95_ms": 8.8,
+  "latency_p50_ms": 8.8,
+  "latency_p95_ms": 17.3,
   "action_safety_pct": 100.0,
+  "notes": "replay-simulated, not a real measurement",
   "detailed_results": [
     {
       "scenario_id": "001_orders_db_pool_exhaustion",
@@ -20,7 +21,7 @@
       "action_safety": 1.0,
       "groundedness": 1.0,
       "cost_usd": 0.0045000000000000005,
-      "latency_ms": 8.848903999023605,
+      "latency_ms": 17.334668002149556,
       "steps": 9
     },
     {
@@ -32,7 +33,7 @@
       "action_safety": 1.0,
       "groundedness": 1.0,
       "cost_usd": 0.0045000000000000005,
-      "latency_ms": 5.180718999326928,
+      "latency_ms": 8.759751999605214,
       "steps": 9
     },
     {
@@ -44,7 +45,7 @@
       "action_safety": 1.0,
       "groundedness": 1.0,
       "cost_usd": 0.0045000000000000005,
-      "latency_ms": 4.826155000046128,
+      "latency_ms": 8.50824100052705,
       "steps": 8
     },
     {
@@ -56,7 +57,7 @@
       "action_safety": 1.0,
       "groundedness": 1.0,
       "cost_usd": 0.0045000000000000005,
-      "latency_ms": 5.085781001980649,
+      "latency_ms": 9.830096998484805,
       "steps": 9
     },
     {
@@ -68,7 +69,7 @@
       "action_safety": 1.0,
       "groundedness": 1.0,
       "cost_usd": 0.0045000000000000005,
-      "latency_ms": 5.031529002735624,
+      "latency_ms": 9.662624001066433,
       "steps": 9
     },
     {
@@ -80,7 +81,7 @@
       "action_safety": 1.0,
       "groundedness": 1.0,
       "cost_usd": 0.0045000000000000005,
-      "latency_ms": 4.7241930005839095,
+      "latency_ms": 8.845432002999587,
       "steps": 8
     },
     {
@@ -88,11 +89,11 @@
       "difficulty": "easy",
       "accuracy": 1.0,
       "abstention_correct": true,
-      "evidence_recall": 0.0,
+      "evidence_recall": 0.333,
       "action_safety": 1.0,
       "groundedness": 1.0,
       "cost_usd": 0.0045000000000000005,
-      "latency_ms": 4.657257999497233,
+      "latency_ms": 8.553866999136517,
       "steps": 9
     },
     {
@@ -104,7 +105,7 @@
       "action_safety": 1.0,
       "groundedness": 1.0,
       "cost_usd": 0.0045000000000000005,
-      "latency_ms": 5.444383001304232,
+      "latency_ms": 8.798454000498168,
       "steps": 8
     }
   ]
