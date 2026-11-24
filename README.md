@@ -77,9 +77,13 @@ flowchart TD
 
 ## 3. Key Components & Implementation Details
 
-### A. RAG & Operational Search Strategies
-* **Pure In-Memory BM25 Lexical Ranking:** Implemented in `incidentiq/rag/engine.py` over curated markdown operational runbooks (`knowledge/runbooks/`) and past incident postmortems (`knowledge/postmortems/`).
-* **Zero External Dependencies:** Eliminates external vector database infrastructure and vector embedding API costs. Runs locally in < 2ms.
+### A. RAG & Operational Search Strategies (Okapi BM25 Lexical Ranking)
+* **Pure In-Memory BM25 Lexical Ranking:** Implemented in `incidentiq/rag/engine.py` over curated markdown operational runbooks (`knowledge/runbooks/`) and past incident postmortems (`knowledge/postmortems/`). Combines Okapi BM25 scoring with Jaccard token overlap and service metadata boosting.
+* **Verified Benchmark Performance (`evals/run_retrieval_eval.py`):**
+  * **Hit@3:** `100.0%` (20/20 target runbooks/postmortems retrieved in top 3).
+  * **MRR (Mean Reciprocal Rank):** `0.9500` across the 20-query SRE test suite (18 queries at rank 1, 2 at rank 2).
+  * **Pure Lexical (without service boost):** `Hit@3 = 100.0%`, `MRR = 0.9167`.
+* **Zero External Dependencies:** Eliminates external vector database infrastructure (no Qdrant, no Chroma) and embedding API costs. Executes deterministically in `< 2ms`.
 * **Service-Specific Metadata Boosting:** Automatically boosts score relevance when the document title matches the alert target service (`orders`, `payments`, `gateway`).
 * **Citation Generation:** Attaches stable evidence identifiers (`ev_kb_orders_db_pool_sec_0`) to allow instant human traceability in the Citation Drawer.
 

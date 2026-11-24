@@ -1,0 +1,289 @@
+{
+  "engine": "Okapi BM25 with Jaccard Lexical Overlap and Service Metadata Boosting",
+  "total_queries": 20,
+  "hit_at_3_count": 20,
+  "hit_at_3_pct": 100.0,
+  "mrr": 0.95,
+  "results": [
+    {
+      "query_id": "q01",
+      "query": "database connection pool exhausted too many connections on orders",
+      "service": "orders",
+      "target_doc": "orders_db_pool",
+      "matched_rank": 1,
+      "hit_at_3": true,
+      "reciprocal_rank": 1.0,
+      "top_chunks": [
+        "doc_orders_db_pool_symptoms",
+        "doc_orders_db_pool_sec_0",
+        "doc_slow_queries_diagnosis_steps"
+      ]
+    },
+    {
+      "query_id": "q02",
+      "query": "FATAL: remaining connection slots are reserved for non-replication superuser connections",
+      "service": "orders",
+      "target_doc": "orders_db_pool",
+      "matched_rank": 2,
+      "hit_at_3": true,
+      "reciprocal_rank": 0.5,
+      "top_chunks": [
+        "doc_incident_104_db_pool_leak_key_indicators",
+        "doc_orders_db_pool_symptoms",
+        "doc_orders_db_pool_diagnosis_steps"
+      ]
+    },
+    {
+      "query_id": "q03",
+      "query": "orders db pool exhaustion restart service increase pool size",
+      "service": "orders",
+      "target_doc": "orders_db_pool",
+      "matched_rank": 1,
+      "hit_at_3": true,
+      "reciprocal_rank": 1.0,
+      "top_chunks": [
+        "doc_orders_db_pool_sec_0",
+        "doc_cache_failure_diagnosis_steps",
+        "doc_slow_queries_metadata"
+      ]
+    },
+    {
+      "query_id": "q04",
+      "query": "third party payment gateway dependency timeout 504 gateway timeout",
+      "service": "payments",
+      "target_doc": "payments_timeout",
+      "matched_rank": 1,
+      "hit_at_3": true,
+      "reciprocal_rank": 1.0,
+      "top_chunks": [
+        "doc_payments_timeout_sec_0",
+        "doc_payments_timeout_symptoms",
+        "doc_payments_timeout_diagnosis_steps"
+      ]
+    },
+    {
+      "query_id": "q05",
+      "query": "ReadTimeout after 5000ms calling fake_external:8004",
+      "service": "payments",
+      "target_doc": "payments_timeout",
+      "matched_rank": 1,
+      "hit_at_3": true,
+      "reciprocal_rank": 1.0,
+      "top_chunks": [
+        "doc_payments_timeout_symptoms",
+        "doc_payments_timeout_sec_0",
+        "doc_payments_timeout_metadata"
+      ]
+    },
+    {
+      "query_id": "q06",
+      "query": "payments latency_p95 elevated above 5s downstream partner timeout",
+      "service": "payments",
+      "target_doc": "payments_timeout",
+      "matched_rank": 1,
+      "hit_at_3": true,
+      "reciprocal_rank": 1.0,
+      "top_chunks": [
+        "doc_payments_timeout_symptoms",
+        "doc_payments_timeout_sec_0",
+        "doc_payments_timeout_remediation"
+      ]
+    },
+    {
+      "query_id": "q07",
+      "query": "redis cache hit rate collapse connection refused 111",
+      "service": "orders",
+      "target_doc": "cache_failure",
+      "matched_rank": 1,
+      "hit_at_3": true,
+      "reciprocal_rank": 1.0,
+      "top_chunks": [
+        "doc_cache_failure_symptoms",
+        "doc_cache_failure_sec_0",
+        "doc_cache_failure_diagnosis_steps"
+      ]
+    },
+    {
+      "query_id": "q08",
+      "query": "cache eviction storm backend database stampede redis connection error",
+      "service": "orders",
+      "target_doc": "cache_failure",
+      "matched_rank": 1,
+      "hit_at_3": true,
+      "reciprocal_rank": 1.0,
+      "top_chunks": [
+        "doc_cache_failure_sec_0",
+        "doc_cache_failure_symptoms",
+        "doc_orders_db_pool_sec_0"
+      ]
+    },
+    {
+      "query_id": "q09",
+      "query": "cache stampede driving database pool in use up",
+      "service": "orders",
+      "target_doc": "cache_failure",
+      "matched_rank": 2,
+      "hit_at_3": true,
+      "reciprocal_rank": 0.5,
+      "top_chunks": [
+        "doc_orders_db_pool_sec_0",
+        "doc_cache_failure_symptoms",
+        "doc_slow_queries_remediation"
+      ]
+    },
+    {
+      "query_id": "q10",
+      "query": "container crashloopbackoff validationerror missing required environment variable",
+      "service": "payments",
+      "target_doc": "bad_deploy_config",
+      "matched_rank": 1,
+      "hit_at_3": true,
+      "reciprocal_rank": 1.0,
+      "top_chunks": [
+        "doc_bad_deploy_config_symptoms",
+        "doc_bad_deploy_config_diagnosis_steps",
+        "doc_incident_112_bad_deploy_config_key_indicators"
+      ]
+    },
+    {
+      "query_id": "q11",
+      "query": "bad deployment configuration rollback deploy exit code 1",
+      "service": "payments",
+      "target_doc": "bad_deploy_config",
+      "matched_rank": 1,
+      "hit_at_3": true,
+      "reciprocal_rank": 1.0,
+      "top_chunks": [
+        "doc_bad_deploy_config_sec_0",
+        "doc_bad_deploy_config_symptoms",
+        "doc_incident_112_bad_deploy_config_key_indicators"
+      ]
+    },
+    {
+      "query_id": "q12",
+      "query": "HTTP 502 bad gateway immediately following new release deploy",
+      "service": "payments",
+      "target_doc": "bad_deploy_config",
+      "matched_rank": 1,
+      "hit_at_3": true,
+      "reciprocal_rank": 1.0,
+      "top_chunks": [
+        "doc_bad_deploy_config_symptoms",
+        "doc_incident_112_bad_deploy_config_incident_summary",
+        "doc_incident_112_bad_deploy_config_key_indicators"
+      ]
+    },
+    {
+      "query_id": "q13",
+      "query": "memory leak monotonic linear growth memory_mb OOMKilled exit code 137",
+      "service": "gateway",
+      "target_doc": "memory_leaks",
+      "matched_rank": 1,
+      "hit_at_3": true,
+      "reciprocal_rank": 1.0,
+      "top_chunks": [
+        "doc_memory_leaks_symptoms",
+        "doc_memory_leaks_sec_0",
+        "doc_memory_leaks_remediation"
+      ]
+    },
+    {
+      "query_id": "q14",
+      "query": "gateway high memory watermark container out of memory restart",
+      "service": "gateway",
+      "target_doc": "memory_leaks",
+      "matched_rank": 1,
+      "hit_at_3": true,
+      "reciprocal_rank": 1.0,
+      "top_chunks": [
+        "doc_memory_leaks_sec_0",
+        "doc_memory_leaks_symptoms",
+        "doc_memory_leaks_metadata"
+      ]
+    },
+    {
+      "query_id": "q15",
+      "query": "slow database query execution sequential table scan latency p95 degradation",
+      "service": "orders",
+      "target_doc": "slow_queries",
+      "matched_rank": 1,
+      "hit_at_3": true,
+      "reciprocal_rank": 1.0,
+      "top_chunks": [
+        "doc_slow_queries_sec_0",
+        "doc_slow_queries_diagnosis_steps",
+        "doc_slow_queries_symptoms"
+      ]
+    },
+    {
+      "query_id": "q16",
+      "query": "unindexed slow sql queries latency degraded without errors",
+      "service": "orders",
+      "target_doc": "slow_queries",
+      "matched_rank": 1,
+      "hit_at_3": true,
+      "reciprocal_rank": 1.0,
+      "top_chunks": [
+        "doc_slow_queries_sec_0",
+        "doc_slow_queries_symptoms",
+        "doc_cache_failure_remediation"
+      ]
+    },
+    {
+      "query_id": "q17",
+      "query": "incident 104 postmortem checkout retry handler leaked connection handles",
+      "service": "orders",
+      "target_doc": "incident_104_db_pool_leak",
+      "matched_rank": 1,
+      "hit_at_3": true,
+      "reciprocal_rank": 1.0,
+      "top_chunks": [
+        "doc_incident_104_db_pool_leak_sec_0",
+        "doc_incident_104_db_pool_leak_incident_summary",
+        "doc_orders_db_pool_remediation"
+      ]
+    },
+    {
+      "query_id": "q18",
+      "query": "postmortem redis connection limit exhausted during backup product catalog",
+      "service": "orders",
+      "target_doc": "incident_108_cache_eviction_storm",
+      "matched_rank": 1,
+      "hit_at_3": true,
+      "reciprocal_rank": 1.0,
+      "top_chunks": [
+        "doc_incident_108_cache_eviction_storm_incident_summary",
+        "doc_incident_104_db_pool_leak_sec_0",
+        "doc_orders_db_pool_symptoms"
+      ]
+    },
+    {
+      "query_id": "q19",
+      "query": "postmortem incident 112 release v2.5.1 PAYMENTS_PROVIDER_SECRET validation error",
+      "service": "payments",
+      "target_doc": "incident_112_bad_deploy_config",
+      "matched_rank": 1,
+      "hit_at_3": true,
+      "reciprocal_rank": 1.0,
+      "top_chunks": [
+        "doc_incident_112_bad_deploy_config_sec_0",
+        "doc_incident_112_bad_deploy_config_key_indicators",
+        "doc_bad_deploy_config_symptoms"
+      ]
+    },
+    {
+      "query_id": "q20",
+      "query": "rollback deploy to v2.4.0 after bad config crashloop emergency recovery",
+      "service": "payments",
+      "target_doc": "incident_112_bad_deploy_config",
+      "matched_rank": 1,
+      "hit_at_3": true,
+      "reciprocal_rank": 1.0,
+      "top_chunks": [
+        "doc_incident_112_bad_deploy_config_recovery_actions",
+        "doc_bad_deploy_config_remediation",
+        "doc_incident_112_bad_deploy_config_sec_0"
+      ]
+    }
+  ]
+}

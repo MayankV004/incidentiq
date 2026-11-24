@@ -53,6 +53,41 @@ This log tracks every finding verified, reproduced, and remediated on the `fix/a
 | **CR-07** | Synchronous SQLAlchemy queries executed inside async FastAPI endpoints | Yes (`stream_incident` called synchronous DB getter on event loop) | Blocking DB operations starved the asyncio event loop during streaming connections | Wrapped synchronous DB lookup in `starlette.concurrency.run_in_threadpool` | `test_stream_incident` in API test suite | `2c08971` |
 | **CR-11** | Inaccurate RAG docstrings claiming dense vectors and cross-encoders | Yes (docstrings claimed vector embeddings and cross-encoders when implementation is BM25) | Premature docstring claims from initial design specification | Corrected docstrings in `incidentiq/rag/engine.py` to honestly specify Okapi BM25 and lexical overlap retrieval | Unit tests pass | `147368f` |
 | **CR-10** | Unformatted codebase with style inconsistencies | Yes (`ruff format --check` flagged 30 files) | Codebase lacked automated ruff formatting enforcement | Executed `uv run ruff format .` across all Python source and test files in an isolated commit | `uv run ruff format --check .` | `8e24b22` |
+| **AUD-10 (Split & Repeats)** | Evaluation benchmark lacks held-out split and repeat stability metrics | Yes (eval evaluated all scenarios as single bucket, no repeat variance) | `evals/run_evals.py` had no split separation or standard deviation across multiple seeds | Added `evals/splits.json` (14 dev / 6 held-out split), `--split`, `--repeats N`, calculating `accuracy_std_pct`, `latency_std_ms`, `cost_std_usd`, and verified code path | `tests/unit/test_eval_split.py` (1 unit test) | `5d8c6c6` |
+| **AUD-14 / T4** | Tool allow-list bypassed in HTTP mode; missing real MCP client transport | Yes (allow-list check was only applied in direct function calls; no real HTTP MCP client existed) | Lack of unified allow-list enforcement layer and missing Streamable HTTP client | Added `incidentiq/agents/mcp_client.py` unified allow-list wrapper in front of both direct and HTTP modes; added Streamable HTTP app in all 3 servers; defaulted `MCP_MODE=http` in compose | `tests/contract/test_mcp_http_client.py` (3 contract tests over real HTTP) | `314d8da` |
+| **AUD-05** | Missing PostgreSQL driver, additive telemetry schema, and Alembic migrations | Yes (`alembic upgrade head` failed, database only had 1 table) | Database models lacked telemetry tables and no migrations were registered | Added `alembic` dependency, configured `migrations/`, created additive migration for `approvals`, `llm_calls`, `tool_calls`, `guardrail_events`, `eval_runs`, `eval_results` without table drops; supported SQLite and PostgreSQL | `tests/unit/test_migrations.py` (3 unit tests) | `6adbe8a` |
+| **CR-05** | Memory leak via unbounded dict cache; multi-worker state divergence; non-resumable approvals | Yes (`_INCIDENT_STORE` grew unboundedly, multi-worker had state divergence, restart wiped pending approvals) | Plain Python dict without eviction; multiple workers partitioned memory; restart emptied approvals | Added `IncidentLRUCache` with LRU eviction and thread-safety; enforced single worker validation on startup; added DB pre-warm and capability token re-generation on restart | `tests/unit/test_lru_and_resumability.py` (3 unit tests) | `2164117` |
+| **AUD-07** | Supervisor was passive/unused; graph lacked dynamic specialist fan-out | Yes (supervisor returned hardcoded plan that was never evaluated by graph edges) | Graph static edges bypassed supervisor's plan | Made supervisor a deterministic planner (zero LLM calls, zero cost) whose plan dynamically drives specialist fan-out via conditional edges (`route_specialist_fanout`) | `tests/unit/test_supervisor_planner.py` (3 unit tests) | `34bb10b` |
+| **AUD-11** | Internal microservices and MCP ports exposed publicly without reverse proxy | Yes (all services mapped `ports` to `0.0.0.0` on host) | Lack of ingress reverse proxy and missing network isolation | Hardened `deploy/docker-compose.yml` with Caddy as sole ingress on 80/443; internal services use `expose:`; added `deploy/docker-compose.override.yml` binding internal ports to `127.0.0.1` | `tests/unit/test_docker_compose_config.py` (2 unit tests) | `13edbf3` |
+| **AUD-09** | Knowledge base retrieval lacked evaluation test set and empirical hit@3/MRR metrics | Yes (no retrieval test queries or hit@3/MRR benchmark existed) | Retrieval performance was unmeasured | Created 20-query SRE test suite in `evals/retrieval_queries.json`; created `evals/run_retrieval_eval.py` measuring **Hit@3 = 100.0%** and **MRR = 0.9500** for Okapi BM25; updated README | `tests/unit/test_retrieval_eval.py` (1 unit test) | `TBD` |
+
+---
+
+## Architectural Proposals (Post-Decision 2 & 3)
+
+### Hybrid RAG Architecture: `bge-small` + `pgvector` + Reciprocal Rank Fusion (RRF)
+Following the landing of additive PostgreSQL migrations (`6adbe8a`), the system is architected for zero-external-dependency hybrid retrieval:
+1. **Dense Embedding Model:** `BAAI/bge-small-en-v1.5` (compact 384-dimensional dense vectors, lightweight CPU inference, fast embedding at build-time).
+2. **Vector Indexing in PostgreSQL (`pgvector`):**
+   - Additive Alembic migration adds `kb_chunks` table:
+     ```sql
+     CREATE EXTENSION IF NOT EXISTS vector;
+     CREATE TABLE kb_chunks (
+         id VARCHAR(128) PRIMARY KEY,
+         document_id VARCHAR(128) NOT NULL,
+         title VARCHAR(255) NOT NULL,
+         content TEXT NOT NULL,
+         service VARCHAR(64) NOT NULL,
+         embedding vector(384)
+     );
+     CREATE INDEX ON kb_chunks USING hnsw (embedding vector_cosine_ops);
+     ```
+   - **Zero External Vector Databases:** Strictly avoids Qdrant, Chroma, Pinecone, or Milvus. Everything is managed natively within the PostgreSQL deploy target.
+3. **Reciprocal Rank Fusion (RRF):**
+   Combines Okapi BM25 rank with vector cosine distance rank using standard $k=60$:
+   $$RRF\_Score(d) = \frac{0.5}{60 + \text{rank}_{BM25}(d)} + \frac{0.5}{60 + \text{rank}_{Dense}(d)}$$
+4. **Offline & SQLite Fallback:**
+   When running in local dev SQLite mode or zero-dependency replay benchmark mode, the system automatically falls back to the in-memory BM25 lexical engine, preserving 100% offline uptime and <2ms latency.
 
 ---
 
