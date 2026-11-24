@@ -5,10 +5,18 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///incidentiq.db")
 
-# If using PostgreSQL with asyncpg, SQLAlchemy sync engine needs standard postgresql driver
-sync_database_url = DATABASE_URL
-if sync_database_url.startswith("postgresql+asyncpg://"):
-    sync_database_url = sync_database_url.replace("postgresql+asyncpg://", "postgresql://")
+
+def get_sync_database_url(url: str) -> str:
+    """Translates database URL to synchronous SQLAlchemy compatible URL."""
+    if url.startswith("postgresql+asyncpg://"):
+        return url.replace("postgresql+asyncpg://", "postgresql+psycopg://")
+    if url.startswith("postgresql://"):
+        return url.replace("postgresql://", "postgresql+psycopg://")
+    return url
+
+
+# If using PostgreSQL with asyncpg or plain postgresql, sync engine needs psycopg
+sync_database_url = get_sync_database_url(DATABASE_URL)
 
 connect_args = {}
 if sync_database_url.startswith("sqlite"):
