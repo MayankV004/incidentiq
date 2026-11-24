@@ -1,0 +1,26 @@
+FROM python:3.12-slim AS builder
+
+WORKDIR /app
+RUN pip install --no-cache-dir uv==0.12.1
+
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
+
+
+FROM python:3.12-slim AS runtime
+
+WORKDIR /app
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+COPY --from=builder /app/.venv /app/.venv
+COPY incidentiq ./incidentiq
+COPY mcp_servers ./mcp_servers
+COPY shop ./shop
+COPY scenarios ./scenarios
+COPY knowledge ./knowledge
+COPY migrations ./migrations
+COPY alembic.ini ./alembic.ini
+
+RUN mkdir -p /app/logs /data

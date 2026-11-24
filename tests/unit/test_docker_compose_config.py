@@ -58,6 +58,42 @@ def test_compose_yaml_files_structure():
             )
 
 
+def test_prod_compose_uses_real_dockerfiles_and_hardening():
+    """BLOCKER-1: Prod compose must use multi-stage Dockerfiles, healthchecks, restarts, and limits."""
+    repo_root = Path(__file__).parents[2]
+    compose_path = repo_root / "deploy" / "docker-compose.yml"
+    with open(compose_path) as f:
+        prod_data = yaml.safe_load(f)
+
+    services = prod_data.get("services", {})
+    assert len(services) > 0
+
+    py_df = repo_root / "deploy" / "Dockerfile.python"
+    ui_df = repo_root / "deploy" / "Dockerfile.ui"
+    assert py_df.exists(), "deploy/Dockerfile.python must exist"
+    assert ui_df.exists(), "deploy/Dockerfile.ui must exist"
+    assert "uv sync --frozen --no-dev" in py_df.read_text()
+    ui_df_text = ui_df.read_text()
+    assert "pnpm install --frozen-lockfile" in ui_df_text
+    assert "CI=true" in ui_df_text
+
+    for s_name, s_cfg in services.items():
+        if "build" in s_cfg:
+            assert "dockerfile_inline" not in s_cfg["build"], (
+                f"{s_name} must not use dockerfile_inline"
+            )
+            assert "dockerfile" in s_cfg["build"], (
+                f"{s_name} must reference a real Dockerfile"
+            )
+        assert "healthcheck" in s_cfg, f"{s_name} must define a healthcheck"
+        assert s_cfg.get("restart") in ("unless-stopped", "always"), (
+            f"{s_name} must define restart policy"
+        )
+        assert "mem_limit" in s_cfg and "cpus" in s_cfg, (
+            f"{s_name} must define mem_limit and cpus resource limits"
+        )
+
+
 def test_docker_compose_cli_validation():
     docker_compose = shutil.which("docker")
     if not docker_compose:
