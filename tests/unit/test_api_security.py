@@ -134,3 +134,27 @@ def test_pii_redacted_before_persistence_and_raw_alert():
     assert raw_email not in db_symptom
     assert raw_phone not in db_symptom
     assert raw_card not in db_symptom
+
+
+def test_approval_conflict_returns_409_and_standard_error_shape():
+    """AUD-12: Approving an incident not awaiting approval returns 409 in standard error shape."""
+    mock_id = f"test_inc_conflict_{int(time.time())}"
+    INCIDENTS_DB[mock_id] = {
+        "incident_id": mock_id,
+        "status": "running",  # not awaiting_approval
+        "approval": None,
+    }
+
+    payload = {
+        "decision": "approve",
+        "approval_id": "appr_req_fake",
+    }
+    res = client.post(f"/v1/incidents/{mock_id}/approval", json=payload, headers=AUTH_HEADERS)
+    assert res.status_code == 409
+    data = res.json()
+    assert "error" in data
+    assert data["error"]["code"] == "STATE_CONFLICT"
+    assert "not awaiting approval" in data["error"]["message"].lower()
+
+    # Clean up
+    INCIDENTS_DB.pop(mock_id, None)
