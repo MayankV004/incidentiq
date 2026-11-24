@@ -1,0 +1,25 @@
+:80 {
+    encode gzip
+
+    # Control Plane API routes
+    handle /v1/* {
+        reverse_proxy incidentiq-api:8000
+    }
+
+    handle /healthz {
+        reverse_proxy incidentiq-api:8000
+    }
+
+    handle /readyz {
+        reverse_proxy incidentiq-api:8000
+    }
+
+    handle /metrics {
+        reverse_proxy incidentiq-api:8000
+    }
+
+    # Next.js Frontend UI
+    handle {
+        reverse_proxy ui:3000
+    }
+}

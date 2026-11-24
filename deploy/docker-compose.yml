@@ -1,7 +1,22 @@
 version: "3.8"
 
 services:
-  # Target Simulated Shop Microservices
+  # Caddy Production Reverse Proxy (Only public ingress on ports 80 & 443)
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - incidentiq-api
+      - ui
+
+  # Target Simulated Shop Microservices (Internal only)
   fake-external:
     build:
       context: ..
@@ -11,8 +26,8 @@ services:
         COPY . .
         RUN pip install fastapi uvicorn pydantic structlog prometheus-client psutil
         CMD ["uvicorn", "shop.fake_external.main:app", "--host", "0.0.0.0", "--port", "8004"]
-    ports:
-      - "8004:8004"
+    expose:
+      - "8004"
 
   payments:
     build:
@@ -25,8 +40,8 @@ services:
         CMD ["uvicorn", "shop.payments.main:app", "--host", "0.0.0.0", "--port", "8003"]
     environment:
       - FAKE_EXTERNAL_URL=http://fake-external:8004
-    ports:
-      - "8003:8003"
+    expose:
+      - "8003"
     depends_on:
       - fake-external
 
@@ -39,8 +54,8 @@ services:
         COPY . .
         RUN pip install fastapi uvicorn pydantic structlog prometheus-client psutil
         CMD ["uvicorn", "shop.orders.main:app", "--host", "0.0.0.0", "--port", "8002"]
-    ports:
-      - "8002:8002"
+    expose:
+      - "8002"
 
   gateway:
     build:
@@ -54,8 +69,8 @@ services:
     environment:
       - ORDERS_SERVICE_URL=http://orders:8002
       - PAYMENTS_SERVICE_URL=http://payments:8003
-    ports:
-      - "8001:8001"
+    expose:
+      - "8001"
     depends_on:
       - orders
       - payments
@@ -70,8 +85,8 @@ services:
         COPY . .
         RUN pip install mcp uvicorn pydantic httpx structlog prometheus-client
         CMD ["uvicorn", "mcp_servers.metrics.server:app", "--host", "0.0.0.0", "--port", "9101"]
-    ports:
-      - "9101:9101"
+    expose:
+      - "9101"
 
   mcp-logs:
     build:
@@ -82,8 +97,8 @@ services:
         COPY . .
         RUN pip install mcp uvicorn pydantic structlog
         CMD ["uvicorn", "mcp_servers.logs.server:app", "--host", "0.0.0.0", "--port", "9102"]
-    ports:
-      - "9102:9102"
+    expose:
+      - "9102"
 
   mcp-remediation:
     build:
@@ -94,10 +109,10 @@ services:
         COPY . .
         RUN pip install mcp uvicorn pydantic structlog
         CMD ["uvicorn", "mcp_servers.remediation.server:app", "--host", "0.0.0.0", "--port", "9103"]
-    ports:
-      - "9103:9103"
+    expose:
+      - "9103"
 
-  # IncidentIQ Control Plane API
+  # IncidentIQ Control Plane API (Internal only, proxied via Caddy)
   incidentiq-api:
     build:
       context: ..
@@ -114,10 +129,33 @@ services:
       - MCP_METRICS_URL=http://mcp-metrics:9101/mcp
       - MCP_LOGS_URL=http://mcp-logs:9102/mcp
       - MCP_REMEDIATION_URL=http://mcp-remediation:9103/mcp
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     depends_on:
       - gateway
       - mcp-metrics
       - mcp-logs
       - mcp-remediation
+
+  # IncidentIQ Web UI (Internal only, proxied via Caddy)
+  ui:
+    build:
+      context: ../ui
+      dockerfile_inline: |
+        FROM node:20-alpine
+        WORKDIR /app
+        COPY package.json pnpm-lock.yaml* ./
+        RUN npm install -g pnpm && pnpm install
+        COPY . .
+        RUN pnpm build
+        CMD ["pnpm", "start", "-p", "3000"]
+    environment:
+      - NEXT_PUBLIC_API_URL=/v1
+    expose:
+      - "3000"
+    depends_on:
+      - incidentiq-api
+
+volumes:
+  caddy_data:
+  caddy_config:

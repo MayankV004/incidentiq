@@ -1,0 +1,40 @@
+version: "3.8"
+
+# Development Override: Binds internal service ports strictly to localhost (127.0.0.1)
+# Prevents exposure of internal microservices and MCP servers to public network interfaces.
+services:
+  incidentiq-api:
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  gateway:
+    ports:
+      - "127.0.0.1:8001:8001"
+
+  orders:
+    ports:
+      - "127.0.0.1:8002:8002"
+
+  payments:
+    ports:
+      - "127.0.0.1:8003:8003"
+
+  fake-external:
+    ports:
+      - "127.0.0.1:8004:8004"
+
+  mcp-metrics:
+    ports:
+      - "127.0.0.1:9101:9101"
+
+  mcp-logs:
+    ports:
+      - "127.0.0.1:9102:9102"
+
+  mcp-remediation:
+    ports:
+      - "127.0.0.1:9103:9103"
+
+  ui:
+    ports:
+      - "127.0.0.1:3000:3000"
