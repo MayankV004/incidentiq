@@ -63,3 +63,49 @@ def test_graph_execution_with_budget_exceeded():
     assert "Budget exceeded" in result["hypothesis"].abstain_reason
     # Ensure no approval token was generated
     assert result.get("approval") is None
+
+
+def test_budget_and_thresholds_configured_via_env(monkeypatch):
+    """BLOCKER-6: MAX_AGENT_STEPS, INCIDENT_BUDGET_USD, ABSTAIN_THRESHOLD, and GROUND_THRESHOLD read from env."""
+    from incidentiq.agents.nodes import output_guard_node
+    from incidentiq.schemas.models import Evidence
+
+    monkeypatch.setenv("MAX_AGENT_STEPS", "3")
+    monkeypatch.setenv("INCIDENT_BUDGET_USD", "0.01")
+    assert check_budget_exceeded({"steps": 3, "cost_usd": 0.001}) is True
+    assert check_budget_exceeded({"steps": 1, "cost_usd": 0.01}) is True
+    assert check_budget_exceeded({"steps": 2, "cost_usd": 0.005}) is False
+
+    monkeypatch.setenv("ABSTAIN_THRESHOLD", "0.90")
+    monkeypatch.setenv("GROUND_THRESHOLD", "0.95")
+
+    ev1 = Evidence(id="ev_1", kind="metric", summary="m1", source_ref="mcp:1")
+    ev2 = Evidence(id="ev_2", kind="log", summary="l1", source_ref="mcp:2")
+
+    # 1. Confidence 0.80 < 0.90 ABSTAIN_THRESHOLD -> abstains
+    hyp_low_conf = Hypothesis(
+        category="db_pool_exhaustion",
+        confidence=0.80,
+        reasoning="moderate signal",
+        evidence_ids=["ev_1", "ev_2"],
+        suggested_action=Action(type="restart_service", target="orders", detail="x"),
+        abstained=False,
+    )
+    out1 = output_guard_node(
+        {"hypothesis": hyp_low_conf, "evidence": [ev1, ev2]}
+    )
+    assert out1["hypothesis"].abstained is True
+
+    # 2. 1 of 2 evidence IDs invalid -> groundedness 0.5 < 0.95 GROUND_THRESHOLD -> abstains
+    hyp_low_ground = Hypothesis(
+        category="db_pool_exhaustion",
+        confidence=0.95,
+        reasoning="high conf but ungrounded citation",
+        evidence_ids=["ev_1", "ev_fake"],
+        suggested_action=Action(type="restart_service", target="orders", detail="x"),
+        abstained=False,
+    )
+    out2 = output_guard_node(
+        {"hypothesis": hyp_low_ground, "evidence": [ev1, ev2]}
+    )
+    assert out2["hypothesis"].abstained is True

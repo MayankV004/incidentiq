@@ -37,6 +37,7 @@ from incidentiq.db import init_db
 from incidentiq.db.cache import IncidentLRUCache, check_single_worker
 from incidentiq.db.repository import (
     append_event_to_db,
+    get_daily_costs_by_id_from_db,
     get_incident_from_db,
     list_incidents_from_db,
     upsert_incident,
@@ -537,11 +538,17 @@ def list_incidents():
 def create_incident(req: CreateIncidentRequest, background_tasks: BackgroundTasks):
     now = time.time()
     today_start = now - (now % 86400)
-    daily_cost = sum(
-        inc.get("cost_usd", 0.0)
-        for inc in INCIDENTS_DB.values()
-        if inc.get("created_at", 0) >= today_start
-    )
+    try:
+        costs_by_id = get_daily_costs_by_id_from_db(today_start)
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"DB daily cost lookup failed: {e}")
+        costs_by_id = {}
+    for inc_id, inc in INCIDENTS_DB.items():
+        if inc.get("created_at", 0) >= today_start:
+            costs_by_id[inc_id] = max(
+                costs_by_id.get(inc_id, 0.0), float(inc.get("cost_usd", 0.0) or 0.0)
+            )
+    daily_cost = sum(costs_by_id.values())
     daily_cap = get_daily_cost_cap()
     if daily_cost >= daily_cap:
         raise HTTPException(
@@ -650,6 +657,7 @@ async def stream_incident(incident_id: str, request: Request):
                 "completed",
                 "awaiting_approval",
                 "abstained",
+                "budget_exceeded",
                 "failed",
                 "remediation_executed",
                 "rejected_by_human",

@@ -220,3 +220,66 @@ def test_extract_client_ip_trusts_only_configured_proxies(monkeypatch):
     assert extract_client_ip(make_req("198.51.100.88", "1.2.3.4")) == "198.51.100.88"
 
 
+def test_daily_cost_cap_persists_across_restart():
+    """BLOCKER-6: Daily spend calculation must query persisted DB records across in-memory cache clears."""
+    from incidentiq.db.models import IncidentRecord
+    from incidentiq.db.repository import upsert_incident
+    from incidentiq.db.session import SessionLocal
+
+    mock_id = f"test_db_cap_{int(time.time())}"
+    upsert_incident(
+        {
+            "incident_id": mock_id,
+            "status": "completed",
+            "cost_usd": 2.50,
+            "created_at": time.time(),
+            "alert": {"service": "orders", "symptom": "db persisted drain"},
+        }
+    )
+    # Simulate API restart where completed incidents are NOT in INCIDENTS_DB cache
+    INCIDENTS_DB.clear()
+
+    try:
+        res = client.post(
+            "/v1/incidents",
+            json={"service": "orders", "symptom": "Should be blocked by persisted DB cap"},
+            headers=AUTH_HEADERS,
+        )
+        assert res.status_code == 429
+        assert res.json()["error"]["code"] == "BUDGET_EXCEEDED"
+    finally:
+        INCIDENTS_DB.pop(mock_id, None)
+        with SessionLocal() as db:
+            db.query(IncidentRecord).filter(IncidentRecord.id == mock_id).delete()
+            db.commit()
+
+
+def test_sse_stream_terminates_on_budget_exceeded():
+    """BLOCKER-6: GET /v1/incidents/{id}/stream must return cleanly when status == budget_exceeded."""
+    mock_id = f"test_sse_budget_{int(time.time())}"
+    INCIDENTS_DB[mock_id] = {
+        "incident_id": mock_id,
+        "status": "budget_exceeded",
+        "cost_usd": 0.06,
+        "created_at": time.time(),
+        "alert": {"service": "orders", "symptom": "budget drain"},
+        "events": [
+            {
+                "id": "ev_done",
+                "type": "done",
+                "node": "system",
+                "title": "Stopped",
+                "summary": "Budget exceeded",
+                "status": "budget_exceeded",
+                "timestamp": time.time(),
+            }
+        ],
+    }
+    try:
+        res = client.get(f"/v1/incidents/{mock_id}/stream", headers=AUTH_HEADERS)
+        assert res.status_code == 200
+        assert "budget_exceeded" in res.text
+    finally:
+        INCIDENTS_DB.pop(mock_id, None)
+
+

@@ -93,6 +93,7 @@ class GuardrailManager:
         hypothesis: Hypothesis,
         evidence_list: list[Evidence],
         confidence_threshold: float = 0.50,
+        ground_threshold: float = 0.85,
     ) -> tuple[Hypothesis, list[str]]:
         """Output Guardrail: Enforces that claims are backed by cited evidence IDs.
 
@@ -101,6 +102,7 @@ class GuardrailManager:
         flags: list[str] = []
         valid_evidence_ids = {e.id for e in evidence_list}
 
+        orig_count = len(hypothesis.evidence_ids)
         # Check citations
         missing_ids = [
             eid for eid in hypothesis.evidence_ids if eid not in valid_evidence_ids
@@ -111,12 +113,28 @@ class GuardrailManager:
                 eid for eid in hypothesis.evidence_ids if eid in valid_evidence_ids
             ]
 
+        ground_score = (
+            len(hypothesis.evidence_ids) / orig_count if orig_count > 0 else 0.0
+        )
+
         # Enforce Groundedness & Confidence Thresholds
         if len(hypothesis.evidence_ids) == 0 and not hypothesis.abstained:
             hypothesis.abstained = True
             hypothesis.abstain_reason = "Insufficient evidence collected: no gathered metrics or logs support a definitive root cause."
             hypothesis.suggested_action = None
             flags.append("abstained_due_to_zero_evidence")
+
+        elif (
+            orig_count > 0
+            and ground_score < ground_threshold
+            and not hypothesis.abstained
+        ):
+            hypothesis.abstained = True
+            hypothesis.abstain_reason = (
+                f"Groundedness ratio {ground_score:.2f} is below safety threshold {ground_threshold:.2f}."
+            )
+            hypothesis.suggested_action = None
+            flags.append("abstained_due_to_low_groundedness")
 
         elif hypothesis.confidence < confidence_threshold and not hypothesis.abstained:
             hypothesis.abstained = True

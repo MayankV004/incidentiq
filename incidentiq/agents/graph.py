@@ -1,3 +1,5 @@
+import os
+
 from langgraph.graph import END, START, StateGraph
 
 from incidentiq.agents.nodes import (
@@ -18,11 +20,27 @@ MAX_AGENT_STEPS = 12
 INCIDENT_BUDGET_USD = 0.05
 
 
+def get_max_agent_steps() -> int:
+    try:
+        return int(os.getenv("MAX_AGENT_STEPS", str(MAX_AGENT_STEPS)))
+    except ValueError:
+        return MAX_AGENT_STEPS
+
+
+def get_incident_budget_usd() -> float:
+    try:
+        return float(os.getenv("INCIDENT_BUDGET_USD", str(INCIDENT_BUDGET_USD)))
+    except ValueError:
+        return INCIDENT_BUDGET_USD
+
+
 def check_budget_exceeded(state: IncidentState) -> bool:
     """Checks whether current incident has exhausted step or cost allocations."""
     steps = state.get("steps", 0)
     cost_usd = state.get("cost_usd", 0.0)
-    return bool(steps >= MAX_AGENT_STEPS or cost_usd >= INCIDENT_BUDGET_USD)
+    return bool(
+        steps >= get_max_agent_steps() or cost_usd >= get_incident_budget_usd()
+    )
 
 
 def route_specialist_fanout(state: IncidentState) -> list[str]:

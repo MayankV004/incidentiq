@@ -448,8 +448,8 @@ def root_cause_agent_node(state: IncidentState) -> dict[str, Any]:
         category = None
         reasoning = "Telemetry shows minor fluctuation but lacks a distinctive signature of known system outages."
 
-    # If confidence < 0.50, abstain honestly
-    abstained = confidence < 0.50
+    # If confidence < threshold, abstain honestly
+    abstained = confidence < get_abstain_threshold()
     abstain_reason = (
         "Telemetry is inconclusive or inconsistent with known failure models."
         if abstained
@@ -480,6 +480,20 @@ def root_cause_agent_node(state: IncidentState) -> dict[str, Any]:
     return out
 
 
+def get_abstain_threshold() -> float:
+    try:
+        return float(os.getenv("ABSTAIN_THRESHOLD", "0.50"))
+    except ValueError:
+        return 0.50
+
+
+def get_ground_threshold() -> float:
+    try:
+        return float(os.getenv("GROUND_THRESHOLD", "0.85"))
+    except ValueError:
+        return 0.85
+
+
 def output_guard_node(state: IncidentState) -> dict[str, Any]:
     """Output Guard: Verifies claim groundedness against cited evidence IDs."""
     hypothesis = state["hypothesis"]
@@ -489,7 +503,8 @@ def output_guard_node(state: IncidentState) -> dict[str, Any]:
     verified_hypothesis, flags = GuardrailManager.verify_groundedness(
         hypothesis=hypothesis,
         evidence_list=state.get("evidence", []),
-        confidence_threshold=0.50,
+        confidence_threshold=get_abstain_threshold(),
+        ground_threshold=get_ground_threshold(),
     )
     return {
         "hypothesis": verified_hypothesis,
@@ -537,9 +552,15 @@ def budget_exceeded_node(state: IncidentState) -> dict[str, Any]:
     """Triggered when step or cost budget is exhausted."""
     steps = state.get("steps", 0)
     cost_usd = state.get("cost_usd", 0.0)
-    reason = (
-        f"Investigation budget exceeded: steps={steps}/12, cost=${cost_usd:.4f}/$0.05"
-    )
+    try:
+        max_steps = int(os.getenv("MAX_AGENT_STEPS", "12"))
+    except ValueError:
+        max_steps = 12
+    try:
+        budget_usd = float(os.getenv("INCIDENT_BUDGET_USD", "0.05"))
+    except ValueError:
+        budget_usd = 0.05
+    reason = f"Investigation budget exceeded: steps={steps}/{max_steps}, cost=${cost_usd:.4f}/${budget_usd:.2f}"
     logger.warning(reason)
 
     hypothesis = state.get("hypothesis")

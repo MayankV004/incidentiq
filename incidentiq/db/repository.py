@@ -95,3 +95,14 @@ def list_incidents_from_db() -> list[dict[str, Any]]:
             db.query(IncidentRecord).order_by(IncidentRecord.created_at.desc()).all()
         )
         return [r.to_dict() for r in records]
+
+
+def get_daily_costs_by_id_from_db(since_ts: float) -> dict[str, float]:
+    """Returns persisted incident_id -> cost_usd for incidents created at or after since_ts."""
+    with SessionLocal() as db:
+        rows = (
+            db.query(IncidentRecord.id, IncidentRecord.cost_usd)
+            .filter(IncidentRecord.created_at >= since_ts)
+            .all()
+        )
+        return {str(row.id): float(row.cost_usd or 0.0) for row in rows}
