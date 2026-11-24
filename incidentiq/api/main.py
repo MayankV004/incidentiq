@@ -19,6 +19,8 @@ load_dotenv()
 
 logger = logging.getLogger("incidentiq.api")
 
+from contextlib import asynccontextmanager
+
 from incidentiq.agents.graph import incident_graph
 from incidentiq.agents.mcp_client import (
     restart_service,
@@ -28,6 +30,7 @@ from incidentiq.agents.mcp_client import (
 )
 from incidentiq.api.security import SecurityAndRateLimitMiddleware, get_daily_cost_cap
 from incidentiq.db import init_db
+from incidentiq.db.cache import IncidentLRUCache, check_single_worker
 from incidentiq.db.repository import (
     append_event_to_db,
     get_incident_from_db,
@@ -36,13 +39,34 @@ from incidentiq.db.repository import (
 )
 from incidentiq.guardrails.guards import GuardrailManager
 from incidentiq.schemas.models import Alert
-from incidentiq.security.tokens import consume_server_approval_token
+from incidentiq.security.tokens import (
+    consume_server_approval_token,
+    generate_capability_token,
+)
 
 # Initialize database schema on startup
 init_db()
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Enforce single worker mode for memory/SSE safety
+    check_single_worker()
+    # Pre-warm active and awaiting_approval incidents from database into memory
+    try:
+        db_incs = list_incidents_from_db()
+        for inc in db_incs:
+            if inc.get("status") in ("awaiting_approval", "queued", "running"):
+                INCIDENTS_DB[inc["incident_id"]] = inc
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Startup DB cache pre-warm failed: {e}")
+    yield
+
+
 app = FastAPI(
-    title="IncidentIQ: Autonomous On-Call Triage Control Plane", version="1.0.0"
+    title="IncidentIQ: Autonomous On-Call Triage Control Plane",
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 ALLOWED_ORIGINS = [
@@ -90,8 +114,8 @@ async def custom_http_exception_handler(request: Request, exc: HTTPException):
     )
 
 
-# In-memory store for incidents and active SSE stream subscribers
-INCIDENTS_DB: dict[str, dict[str, Any]] = {}
+# In-memory LRU store for incidents and active SSE stream subscribers
+INCIDENTS_DB = IncidentLRUCache()
 SUBSCRIBERS: dict[str, list[asyncio.Queue]] = {}
 
 
@@ -462,43 +486,22 @@ def list_scenarios():
 
 @app.get("/v1/incidents")
 def list_incidents():
-    """Lists all investigated incidents from persistent database."""
+    """Lists all investigated incidents from persistent database and in-memory cache."""
+    seen: dict[str, dict[str, Any]] = {}
     try:
-        db_records = list_incidents_from_db()
-        if db_records:
-            return [
-                {
-                    "incident_id": inc["incident_id"],
-                    "service": inc["alert"].get("service"),
-                    "symptom": inc["alert"].get("symptom"),
-                    "status": inc.get("status"),
-                    "cost_usd": inc.get("cost_usd", 0.0),
-                    "latency_ms": inc.get("latency_ms", 0.0),
-                    "created_at": inc.get("created_at"),
-                    "category": inc.get("hypothesis", {}).get("category")
-                    if inc.get("hypothesis")
-                    else None,
-                    "root_cause": (
-                        inc.get("hypothesis", {}).get("category")
-                        or inc.get("hypothesis", {}).get("root_cause")
-                    )
-                    if inc.get("hypothesis")
-                    else None,
-                    "confidence": inc.get("hypothesis", {}).get("confidence")
-                    if inc.get("hypothesis")
-                    else None,
-                    "langfuse_trace_url": inc.get("langfuse_trace_url"),
-                }
-                for inc in db_records
-            ]
+        for inc in list_incidents_from_db():
+            seen[inc["incident_id"]] = inc
     except Exception as e:  # noqa: BLE001
         logger.error(f"Failed to query DB for list_incidents: {e}")
 
+    for inc in INCIDENTS_DB.values():
+        seen[inc["incident_id"]] = inc
+
     return [
         {
-            "incident_id": inc_id,
-            "service": inc["alert"].get("service"),
-            "symptom": inc["alert"].get("symptom"),
+            "incident_id": inc.get("incident_id"),
+            "service": inc.get("alert", {}).get("service"),
+            "symptom": inc.get("alert", {}).get("symptom"),
             "status": inc.get("status"),
             "cost_usd": inc.get("cost_usd", 0.0),
             "latency_ms": inc.get("latency_ms", 0.0),
@@ -517,8 +520,8 @@ def list_incidents():
             else None,
             "langfuse_trace_url": inc.get("langfuse_trace_url"),
         }
-        for inc_id, inc in sorted(
-            INCIDENTS_DB.items(), key=lambda x: x[1].get("created_at", 0), reverse=True
+        for inc in sorted(
+            seen.values(), key=lambda x: x.get("created_at", 0), reverse=True
         )
     ]
 
@@ -703,9 +706,25 @@ def handle_approval(incident_id: str, req: ApprovalDecisionRequest):
     # Retrieve and consume server-side capability token (single-use)
     token = consume_server_approval_token(expected_approval_id)
     if not token:
-        raise HTTPException(
-            status_code=403, detail="Approval token already consumed or unavailable"
-        )
+        # If server restarted while incident was awaiting_approval, re-issue a valid capability token
+        # bound to the exact approved action and target, ensuring restart resumability
+        action = approval_info.get("action", {})
+        act_type = action.get("type")
+        target = action.get("target")
+        if act_type and target and inc.get("status") == "awaiting_approval":
+            token = generate_capability_token(
+                incident_id=incident_id,
+                action=act_type,
+                target=target,
+                ttl_seconds=900,
+            )
+            logger.info(
+                f"Re-issued server capability token after restart for approval {expected_approval_id}"
+            )
+        else:
+            raise HTTPException(
+                status_code=403, detail="Approval token already consumed or unavailable"
+            )
 
     # Execute dry-run remediation tool via MCP
     action = approval_info.get("action", {})
