@@ -6,6 +6,7 @@ from incidentiq.schemas.models import Alert, Evidence, Hypothesis
 
 class IncidentState(TypedDict, total=False):
     incident_id: str
+    scenario_id: str | None
     alert: Alert
     plan: list[str]  # e.g. ["metrics", "logs", "runbook"]
     evidence: Annotated[

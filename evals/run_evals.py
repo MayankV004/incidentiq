@@ -69,7 +69,6 @@ def run_benchmark(
 
     for sc_dir in scenario_dirs:
         scenario_id = os.path.basename(sc_dir)
-        os.environ["SCENARIO_ID"] = scenario_id
         scenario_runs[scenario_id] = []
 
         # Load alert and label
@@ -87,6 +86,7 @@ def run_benchmark(
             )
             initial_state = {
                 "incident_id": f"eval_{scenario_id}_r{rep}",
+                "scenario_id": scenario_id,
                 "alert": alert,
                 "plan": [],
                 "evidence": [],

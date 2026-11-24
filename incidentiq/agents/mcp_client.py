@@ -14,6 +14,7 @@ from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 
 from incidentiq.agents.tool_registry import is_tool_allowed_for_agent
+from mcp_servers.validation import validate_scenario_id
 
 logger = logging.getLogger("incidentiq.mcp_client")
 
@@ -169,12 +170,25 @@ def call_mcp_tool(
 
 
 # Convenience wrappers for specialist agents that route through call_mcp_tool
-def query_metric(service: str, metric: str, minutes: int = 30) -> dict[str, Any]:
+def _build_scenario_args(base: dict[str, Any], scenario_id: str = "") -> dict[str, Any]:
+    clean_id = (scenario_id or "").strip()
+    if clean_id:
+        if not validate_scenario_id(clean_id):
+            raise ValueError(f"Invalid scenario_id '{scenario_id}'")
+        base["scenario_id"] = clean_id
+    return base
+
+
+def query_metric(
+    service: str, metric: str, minutes: int = 30, scenario_id: str = ""
+) -> dict[str, Any]:
     return call_mcp_tool(
         "metrics_agent",
         "metrics",
         "query_metric",
-        {"service": service, "metric": metric, "minutes": minutes},
+        _build_scenario_args(
+            {"service": service, "metric": metric, "minutes": minutes}, scenario_id
+        ),
     )
 
 
@@ -184,12 +198,16 @@ def list_metrics(service: str) -> list[str]:
     )
 
 
-def detect_anomaly(service: str, metric: str, minutes: int = 30) -> dict[str, Any]:
+def detect_anomaly(
+    service: str, metric: str, minutes: int = 30, scenario_id: str = ""
+) -> dict[str, Any]:
     return call_mcp_tool(
         "metrics_agent",
         "metrics",
         "detect_anomaly",
-        {"service": service, "metric": metric, "minutes": minutes},
+        _build_scenario_args(
+            {"service": service, "metric": metric, "minutes": minutes}, scenario_id
+        ),
     )
 
 
@@ -199,36 +217,47 @@ def search_logs(
     level: str = "",
     minutes: int = 30,
     limit: int = 50,
+    scenario_id: str = "",
 ) -> list[dict[str, Any]]:
     return call_mcp_tool(
         "logs_agent",
         "logs",
         "search_logs",
-        {
-            "service": service,
-            "query": query,
-            "level": level,
-            "minutes": minutes,
-            "limit": limit,
-        },
+        _build_scenario_args(
+            {
+                "service": service,
+                "query": query,
+                "level": level,
+                "minutes": minutes,
+                "limit": limit,
+            },
+            scenario_id,
+        ),
     )
 
 
-def get_error_clusters(service: str, minutes: int = 30) -> list[dict[str, Any]]:
+def get_error_clusters(
+    service: str, minutes: int = 30, scenario_id: str = ""
+) -> list[dict[str, Any]]:
     return call_mcp_tool(
         "logs_agent",
         "logs",
         "get_error_clusters",
-        {"service": service, "minutes": minutes},
+        _build_scenario_args({"service": service, "minutes": minutes}, scenario_id),
     )
 
 
-def get_log_context(service: str, target_line_id: str, context: int = 5) -> list[str]:
+def get_log_context(
+    service: str, target_line_id: str, context: int = 5, scenario_id: str = ""
+) -> list[str]:
     return call_mcp_tool(
         "logs_agent",
         "logs",
         "get_log_context",
-        {"service": service, "target_line_id": target_line_id, "context": context},
+        _build_scenario_args(
+            {"service": service, "target_line_id": target_line_id, "context": context},
+            scenario_id,
+        ),
     )
 
 

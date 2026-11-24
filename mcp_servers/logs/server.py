@@ -13,6 +13,7 @@ from mcp_servers.validation import (
     clamp_window,
     get_safe_log_path,
     get_safe_scenario_path,
+    validate_scenario_id,
     validate_service,
 )
 
@@ -41,16 +42,24 @@ def parse_iso_ts(ts_str: Any) -> datetime | None:
         return None
 
 
-def load_raw_logs(service: str, minutes: int | None = None) -> list[dict[str, Any]]:
+def load_raw_logs(
+    service: str, minutes: int | None = None, scenario_id: str = ""
+) -> list[dict[str, Any]]:
     if service and not validate_service(service):
         return []
 
     data_mode = os.getenv("DATA_MODE", DATA_MODE)
-    scenario_id = os.getenv("SCENARIO_ID", SCENARIO_ID)
+    target_scenario = (
+        scenario_id.strip()
+        if scenario_id and scenario_id.strip()
+        else os.getenv("SCENARIO_ID", SCENARIO_ID)
+    )
+    if not validate_scenario_id(target_scenario):
+        return []
 
     logs: list[dict[str, Any]] = []
     if data_mode == "replay":
-        safe_path = get_safe_scenario_path(scenario_id, "logs.jsonl")
+        safe_path = get_safe_scenario_path(target_scenario, "logs.jsonl")
         if safe_path and os.path.exists(safe_path):
             with open(safe_path) as f:
                 for line in f:
@@ -97,6 +106,7 @@ def search_logs(
     level: str = "",
     minutes: int = 30,
     limit: int = 50,
+    scenario_id: str = "",
 ) -> list[dict[str, Any]]:
     """Searches logs for a service by substring query and log level.
 
@@ -108,11 +118,13 @@ def search_logs(
                 "error": f"Invalid service '{service}'. Allowed services: {sorted(ALLOWED_SERVICES)}"
             }
         ]
+    if scenario_id and scenario_id.strip() and not validate_scenario_id(scenario_id):
+        return [{"error": f"Invalid scenario_id '{scenario_id}': invalid path"}]
 
     valid_minutes = clamp_window(minutes)
     capped_limit = clamp_limit(limit, max_limit=50)
 
-    raw_logs = load_raw_logs(service, minutes=valid_minutes)
+    raw_logs = load_raw_logs(service, minutes=valid_minutes, scenario_id=scenario_id)
     results = []
 
     for log in raw_logs:
@@ -140,7 +152,9 @@ def search_logs(
 
 
 @server.tool()
-def get_error_clusters(service: str, minutes: int = 30) -> list[dict[str, Any]]:
+def get_error_clusters(
+    service: str, minutes: int = 30, scenario_id: str = ""
+) -> list[dict[str, Any]]:
     """Groups similar error log messages into clusters with occurrence count and first/last seen timestamps."""
     if service and not validate_service(service):
         return [
@@ -148,9 +162,11 @@ def get_error_clusters(service: str, minutes: int = 30) -> list[dict[str, Any]]:
                 "error": f"Invalid service '{service}'. Allowed services: {sorted(ALLOWED_SERVICES)}"
             }
         ]
+    if scenario_id and scenario_id.strip() and not validate_scenario_id(scenario_id):
+        return [{"error": f"Invalid scenario_id '{scenario_id}': invalid path"}]
 
     valid_minutes = clamp_window(minutes)
-    raw_logs = load_raw_logs(service, minutes=valid_minutes)
+    raw_logs = load_raw_logs(service, minutes=valid_minutes, scenario_id=scenario_id)
     clusters: dict[str, dict[str, Any]] = {}
 
     for log in raw_logs:
@@ -185,7 +201,11 @@ def get_error_clusters(service: str, minutes: int = 30) -> list[dict[str, Any]]:
 
 @server.tool()
 def get_log_context(
-    service: str, line_id: str = "", before: int = 5, after: int = 5
+    service: str,
+    line_id: str = "",
+    before: int = 5,
+    after: int = 5,
+    scenario_id: str = "",
 ) -> dict[str, Any]:
     """Returns surrounding log context around an error line."""
     if service and not validate_service(service):
@@ -194,11 +214,17 @@ def get_log_context(
             "context_lines": [],
             "error": f"Invalid service '{service}'",
         }
+    if scenario_id and scenario_id.strip() and not validate_scenario_id(scenario_id):
+        return {
+            "service": service,
+            "context_lines": [],
+            "error": f"Invalid scenario_id '{scenario_id}': invalid path",
+        }
 
     safe_before = clamp_context(before, max_context=20)
     safe_after = clamp_context(after, max_context=20)
 
-    raw_logs = load_raw_logs(service)
+    raw_logs = load_raw_logs(service, scenario_id=scenario_id)
     target_idx = None
 
     if line_id:

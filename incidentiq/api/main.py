@@ -200,11 +200,10 @@ def run_incident_workflow(incident_id: str, alert: Alert):
     t_start = time.perf_counter()
 
     scenario_id = INCIDENTS_DB[incident_id].get("scenario_id")
-    if scenario_id:
-        os.environ["SCENARIO_ID"] = scenario_id
 
     initial_state = {
         "incident_id": incident_id,
+        "scenario_id": scenario_id,
         "alert": alert,
         "plan": [],
         "evidence": [],

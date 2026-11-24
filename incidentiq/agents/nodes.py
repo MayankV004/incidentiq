@@ -63,6 +63,7 @@ def supervisor_node(state: IncidentState) -> dict[str, Any]:
 def metrics_agent_node(state: IncidentState) -> dict[str, Any]:
     """Metrics Specialist: Investigates Prometheus metrics for the affected service."""
     service = state["alert"].service
+    scenario_id = state.get("scenario_id") or ""
     new_evidence: list[Evidence] = []
     cost = 0.001
 
@@ -75,11 +76,15 @@ def metrics_agent_node(state: IncidentState) -> dict[str, Any]:
         "cache_hit_rate",
     ]
     for m in metrics_to_check:
-        res = query_metric(service=service, metric=m, minutes=30)
+        res = query_metric(
+            service=service, metric=m, minutes=30, scenario_id=scenario_id
+        )
         if "error" in res:
             continue
         summary = res.get("summary", {})
-        anomaly = detect_anomaly(service=service, metric=m, minutes=30)
+        anomaly = detect_anomaly(
+            service=service, metric=m, minutes=30, scenario_id=scenario_id
+        )
 
         # Record evidence if anomaly detected or notable metric values
         if anomaly.get("anomalous") or (
@@ -108,11 +113,14 @@ def metrics_agent_node(state: IncidentState) -> dict[str, Any]:
 def logs_agent_node(state: IncidentState) -> dict[str, Any]:
     """Logs Specialist: Searches container logs and aggregates error clusters."""
     service = state["alert"].service
+    scenario_id = state.get("scenario_id") or ""
     new_evidence: list[Evidence] = []
     cost = 0.001
 
     # 1. Error clusters
-    clusters = get_error_clusters(service=service, minutes=30)
+    clusters = get_error_clusters(
+        service=service, minutes=30, scenario_id=scenario_id
+    )
     for idx, c in enumerate(clusters[:2]):
         ev_id = f"ev_log_cluster_{idx + 1}"
         ev = Evidence(
@@ -125,7 +133,9 @@ def logs_agent_node(state: IncidentState) -> dict[str, Any]:
         new_evidence.append(ev)
 
     # 2. Specific search for fatal or timeout logs
-    error_logs = search_logs(service=service, level="error", limit=3)
+    error_logs = search_logs(
+        service=service, level="error", limit=3, scenario_id=scenario_id
+    )
     for idx, l in enumerate(error_logs):
         ev_id = f"ev_log_err_{idx + 1}"
         ev = Evidence(

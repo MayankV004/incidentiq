@@ -13,6 +13,7 @@ from mcp_servers.validation import (
     clamp_window,
     get_safe_scenario_path,
     sanitize_promql_service,
+    validate_scenario_id,
     validate_service,
 )
 
@@ -48,7 +49,9 @@ def parse_metric_ts(ts_val: Any) -> datetime | None:
 
 
 @server.tool()
-def query_metric(service: str, metric: str, minutes: int = 30) -> dict[str, Any]:
+def query_metric(
+    service: str, metric: str, minutes: int = 30, scenario_id: str = ""
+) -> dict[str, Any]:
     """Queries a specific metric for a service over a time window (minutes).
 
     Returns summary stats (min, max, mean, count) and downsampled points.
@@ -65,19 +68,29 @@ def query_metric(service: str, metric: str, minutes: int = 30) -> dict[str, Any]
 
     valid_minutes = clamp_window(minutes, max_minutes=180)
     data_mode = os.getenv("DATA_MODE", DATA_MODE)
-    scenario_id = os.getenv("SCENARIO_ID", SCENARIO_ID)
+    target_scenario = (
+        scenario_id.strip()
+        if scenario_id and scenario_id.strip()
+        else os.getenv("SCENARIO_ID", SCENARIO_ID)
+    )
+    if not validate_scenario_id(target_scenario):
+        return {"error": f"Invalid scenario_id '{target_scenario}': invalid path"}
 
     points: list[dict[str, Any]] = []
 
     if data_mode == "replay":
-        safe_path = get_safe_scenario_path(scenario_id, "metrics.json")
+        safe_path = get_safe_scenario_path(target_scenario, "metrics.json")
         if safe_path and os.path.exists(safe_path):
             with open(safe_path) as f:
                 raw = json.load(f)
-                points = raw.get("metrics", {}).get(metric, [])
+                raw_service = raw.get("service")
+                if raw_service and raw_service.strip().lower() != service.strip().lower():
+                    points = []
+                else:
+                    points = raw.get("metrics", {}).get(metric, [])
         else:
             return {
-                "error": f"Replay scenario '{scenario_id}' metrics not found or invalid path"
+                "error": f"Replay scenario '{target_scenario}' metrics not found or invalid path"
             }
     else:
         # Live Prometheus query fallback
@@ -135,9 +148,11 @@ def query_metric(service: str, metric: str, minutes: int = 30) -> dict[str, Any]
 
 
 @server.tool()
-def detect_anomaly(service: str, metric: str, minutes: int = 30) -> dict[str, Any]:
+def detect_anomaly(
+    service: str, metric: str, minutes: int = 30, scenario_id: str = ""
+) -> dict[str, Any]:
     """Detects statistical anomalies for a given metric using mean and standard deviation."""
-    query_res = query_metric(service, metric, minutes)
+    query_res = query_metric(service, metric, minutes, scenario_id=scenario_id)
     if "error" in query_res:
         return query_res
 
