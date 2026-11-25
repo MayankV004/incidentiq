@@ -14,13 +14,11 @@ They connect only through Prometheus (metrics) and log files, read via MCP serve
 ```mermaid
 flowchart LR
   subgraph Shop
-    GW[gateway] --> ORD[orders]
+    GW[gateway] --> ORD[orders in-memory dicts]
     GW --> PAY[payments]
-    ORD --> PG[(Postgres)]
-    ORD --> RD[(Redis)]
     PAY --> EXT[fake external API]
   end
-  Shop -->|/metrics| PROM[Prometheus]
+  Shop -->|/metrics optional overlay| PROM[Prometheus]
   Shop -->|JSON logs| LOGS[(log files)]
   FI[Fault injector] -.breaks.-> Shop
 
@@ -38,21 +36,23 @@ flowchart LR
     SUP --> MA[Metrics agent]
     SUP --> LA[Logs agent]
     SUP --> RA[Runbook RAG agent]
+    SUP --> MEM[Memory agent]
     MA --> RCA[Root-cause agent]
     LA --> RCA
     RA --> RCA
+    MEM --> RCA
     RCA --> OG[Output guard]
     OG --> HA{Human approval}
   end
   MA --> MM
   LA --> LM
   HA --> RM
-  RA --> VDB[(pgvector)]
-  API --> DB[(Postgres app DB)]
-  IncidentIQ --> LF[Langfuse traces]
-  IncidentIQ --> GR[Grafana]
+  RA --> KB[(BM25 Knowledge Base)]
+  MEM --> DB[(SQLite app DB)]
+  API --> DB
+  IncidentIQ -.->|Optional| LF[Langfuse traces]
   EV[Eval harness] --> API
-  UI[Next.js + TypeScript UI] --> API
+  UI[Next.js + BFF proxy UI] --> API
 ```
 
 ## 3. Incident sequence

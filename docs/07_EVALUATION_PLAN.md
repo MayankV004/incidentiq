@@ -88,13 +88,21 @@ Split: use 20 scenarios for development and prompt tuning, hold out 10 for the f
 
 ```
 evals/
-  run_evals.py        # CLI: python -m evals.run_evals --name v1-baseline --repeats 3
-  scorers.py          # accuracy, recall, tool-use, abstention
-  judge.py            # groundedness judge prompts
-  report.py           # markdown/CSV summary and comparison
+  run_evals.py        # CLI: --name, --repeats, --split, --scenarios-dir, --ablate-memory
+  score_live.py       # Scores SQLite incidents labeled via POST /v1/incidents/{id}/feedback
+  scorers.py          # accuracy, recall, groundedness, abstention
+  run_retrieval_eval.py # 20-query KB BM25 evaluation (Hit@3, MRR)
   results/            # versioned JSON outputs, committed
-  redteam/            # attack cases and runner
+  redteam/            # 20-vector adversarial attack suite and runner
+scripts/
+  capture_incident.py # Captures live Prometheus + log window into replay scenarios
 ```
+
+### Real-World Capture & Shadow-Mode Scoring
+1. Run Prometheus scraping alongside the stack via `deploy/docker-compose.monitoring.yml` (`DATA_MODE=live`).
+2. Snapshot real fault windows with `scripts/capture_incident.py --scenario-id ... --service ...` into `scenarios_real/`, then evaluate them via `evals/run_evals.py --scenarios-dir scenarios_real --no-enforce`.
+3. Measure episodic memory impact via `evals/run_evals.py --ablate-memory` (`ENABLE_AGENT_MEMORY=false` vs `true`).
+4. Label live/shadow UI runs (`correct_root_cause`, `wrong_root_cause`, `good_abstention`, `false_alarm`) and run `evals/score_live.py` to compute empirical accuracy, abstention precision, confidence calibration gap, latency, and cost.
 
 Flow: load scenarios, for each (scenario, repeat) create an incident in replay mode, wait for completion, score, store in `eval_results`, aggregate into `eval_runs.summary`, write `results/<name>.json`.
 

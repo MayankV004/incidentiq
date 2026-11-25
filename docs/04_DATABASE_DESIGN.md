@@ -2,8 +2,8 @@
 
 ## Deployed Demo Implementation (Single-Worker SQLite)
 - **Active Storage Engine:** Single-worker Uvicorn (`WORKERS=1`) backed by SQLite (`sqlite:///incidentiq.db` locally, `sqlite:////data/incidentiq.db` in Docker Compose via persistent volume `iiq_data`). PostgreSQL (`postgresql+psycopg://`), `pgvector`, and Redis are deferred out of the public cost-capped demo.
-- **Additive Alembic Migrations:** `0001_incidents` creates `incidents`, and `451ef2dd7538` creates `approvals`, `guardrail_events`, `llm_calls`, `tool_calls`, `eval_runs`, and `eval_results`. `alembic upgrade head` is idempotent on both clean and pre-initialized SQLite databases.
-- **Runtime Telemetry Writes:** Replay and live workflows populate `incidents`, `approvals`, `llm_calls`, `tool_calls` (with capability tokens redacted), and `guardrail_events`, and daily spend caps query persisted `IncidentRecord.cost_usd` directly so limits survive restarts.
+- **Additive Alembic Migrations:** `0001_incidents` creates `incidents`, `451ef2dd7538` creates `approvals`, `guardrail_events`, `llm_calls`, `tool_calls`, `eval_runs`, and `eval_results`, and `a7c4e1b9d203` creates `incident_feedback`. `alembic upgrade head` is idempotent on both clean and pre-initialized SQLite databases.
+- **Runtime Telemetry & Episodic Memory:** Replay and live workflows populate `incidents`, `approvals`, `llm_calls`, `tool_calls` (with capability tokens redacted), `guardrail_events`, and `incident_feedback`. `memory_agent` recalls verified past incidents backed by `incident_feedback` or `approvals` decisions (`ENABLE_AGENT_MEMORY=true`), while daily spend caps query persisted `IncidentRecord.cost_usd` directly so limits survive restarts.
 - **Backups:** Hot online SQLite backups and restores are supported via `scripts/backup_sqlite.sh` (using Python `sqlite3.Connection.backup`).
 
 ---
@@ -20,6 +20,7 @@ erDiagram
   incidents ||--o{ guardrail_events : triggers
   incidents ||--o{ llm_calls : tracks
   incidents ||--o{ tool_calls : audits
+  incidents ||--o{ incident_feedback : verified_by
   eval_runs ||--o{ eval_results : aggregates
 ```
 
@@ -32,6 +33,7 @@ erDiagram
 | `guardrail_events` | SQLite & Postgres | `id` (VARCHAR 36 UUID) | Audit trail of PII redactions, prompt injection interceptions, and groundedness drop flags |
 | `llm_calls` | SQLite & Postgres | `id` (VARCHAR 36 UUID) | Granular model call telemetry: model name, purpose, token usage, cost, and latency |
 | `tool_calls` | SQLite & Postgres | `id` (VARCHAR 36 UUID) | MCP tool audit log: server name, tool name, arguments, output, allowlist verification status |
+| `incident_feedback` | SQLite & Postgres | `id` (VARCHAR 36 UUID) | Human verification verdicts (`correct_root_cause`, `wrong_root_cause`, `good_abstention`, `false_alarm`) powering episodic memory and live evals |
 | `eval_runs` | SQLite & Postgres | `id` (VARCHAR 36 UUID) | IncidentBench evaluation run summary metrics (accuracy, cost, latency, split, repeats) |
 | `eval_results` | SQLite & Postgres | `id` (VARCHAR 36 UUID) | Per-scenario evaluation scores and hypothesis outcomes within an evaluation run |
 

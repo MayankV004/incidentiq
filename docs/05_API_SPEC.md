@@ -7,6 +7,7 @@ Base URL: `/v1`. JSON over HTTP. Streaming via Server-Sent Events (SSE). Auth fo
 - **Standard Error Envelope:** HTTP `400`, `401`, `403`, `404`, `409`, `422` (`VALIDATION_ERROR`), `429` (`RATE_LIMIT_EXCEEDED` / `BUDGET_EXCEEDED`), and `500` (`INTERNAL_ERROR`) all return `{ "error": { "code", "message", "details" } }`.
 - **Input Validation (`POST /v1/incidents`):** Rejects unknown services outside `ALLOWED_SERVICES`, traversal payloads in `scenario_id`, empty/oversized `symptom`, and `window_end <= window_start` with HTTP `400`.
 - **Stream Endpoint & Approvals:** Live SSE endpoint is `GET /v1/incidents/{id}/stream` (terminating cleanly on `completed`, `awaiting_approval`, `abstained`, `budget_exceeded`, `failed`, `remediation_executed`, and `rejected_by_human`). `POST /v1/incidents/{id}/approval` accepts `approval_id` and `decision` (`"approve"` | `"reject"`), keeping raw capability tokens strictly server-side.
+- **Outcome Feedback (`POST /v1/incidents/{id}/feedback`):** Accepts `{ "verdict": "correct_root_cause" | "wrong_root_cause" | "good_abstention" | "false_alarm", "corrected_category"?: str, "notes"?: str, "submitted_by"?: str }`, scrubs PII before saving to `incident_feedback`, feeds `memory_agent` episodic recall and `evals/score_live.py`, and surfaces `"feedback"` on `GET /v1/incidents/{id}`.
 - **Readiness (`/readyz`):** Probes SQLite (`SELECT 1`) and (when `MCP_MODE=http`) connectivity to `mcp-metrics`, `mcp-logs`, and `mcp-remediation`, returning HTTP `503` if any dependency is unavailable.
 
 ## 1. Conventions

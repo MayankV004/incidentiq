@@ -96,16 +96,18 @@ Buttons per fault type with a variant selector, a "Reset shop" button, and a sma
 - Accessible contrast; do not rely on color alone (add icons or text).
 - Keep each page loadable in under 2 seconds with paginated tables.
 
-## 10. Next.js + TypeScript implementation notes
+## 10. Next.js + TypeScript implementation notes (Implemented)
 
-- **Project structure (App Router):**
-  - `app/layout.tsx`: Root layout with dark/light theme provider, global nav sidebar.
-  - `app/page.tsx`: Live Incident (main triage workspace).
-  - `app/incidents/page.tsx`: Historical incidents table.
-  - `app/evaluation/page.tsx`: Benchmark comparisons, charts, drill-downs.
-  - `app/security/page.tsx`: Red-team suite results and interactive attack testing.
-  - `app/shop/page.tsx`: Demo fault injection panel.
-- **Type safety:** Maintain strict TypeScript interfaces in `types/api.ts` mirroring backend Pydantic models (`Incident`, `Alert`, `Evidence`, `Hypothesis`, `Action`, `EvalRun`).
-- **Real-time SSE streaming:** Use a React hook (`useIncidentStream`) leveraging standard `fetch` with `ReadableStream` or `EventSource` to stream SSE updates into state, smoothly appending timeline events without page re-renders.
-- **Charts & Tables:** Recharts for responsive time-series charts (Prometheus metrics) and benchmark comparisons; accessible semantic tables styled with Tailwind CSS.
-- **API client:** Centralized API client in `lib/api.ts` with error handling, typed responses, and abort controller support.
+- **Project structure (Next.js 16 App Router + BFF Auth Proxy):**
+  - `app/layout.tsx`: Root layout wrapping `ThemeProvider` and persistent `AppShell` (`AppSidebar` + `TopBar`) across routes.
+  - `app/api/v1/[...path]/route.ts`: Server-side BFF proxy injecting `X-API-Key` from server env `API_KEY` and streaming SSE to the browser.
+  - `app/page.tsx`: `/` Live Triage page (persists active incident across route switches and reloads via `?incident=<id>` and `sessionStorage`).
+  - `app/incidents/page.tsx`: `/incidents` persistent SQLite incident history table; clicking a row navigates to `/incidents/[id]`.
+  - `app/incidents/[id]/page.tsx`: `/incidents/[id]` shareable detail & replay view for a saved incident.
+  - `app/evaluation/page.tsx`: `/evaluation` benchmark scorecard loaded from `/api/v1/evals`.
+  - `app/security/page.tsx`: `/security` adversarial red-team matrix loaded from `/api/v1/redteam`.
+  - `app/shop/page.tsx`: `/shop` demo microservices topology summary.
+- **Outcome Verification & Memory Feedback:** `ReportView` (`Correct diagnosis` / `Wrong diagnosis`) and `AbstainedPanel` (`Good abstention` / `Missed outage`) submit `POST /api/v1/incidents/{id}/feedback`, feeding both episodic `memory_agent` recall and `evals/score_live.py`. `AgentTimeline` includes `Memory agent` alongside `Metrics`, `Logs`, and `Runbook` agents, and `CitationSheet` inspects `ev_mem_*` episodes alongside telemetry and KB chunks.
+- **Type safety:** Maintain strict TypeScript interfaces in `types/api.ts` mirroring backend models (`IncidentDetail`, `Alert`, `Evidence`, `Hypothesis`, `Action`, `IncidentFeedback`, `EvalRunMetrics`).
+- **Real-time SSE streaming:** `hooks/useIncidentStream.ts` hydrates saved incident state via `GET /api/v1/incidents/{id}` first, then opens `EventSource` to `/api/v1/incidents/{id}/stream` while an incident is non-terminal.
+- **API client:** Same-origin `/api/v1/*` client in `lib/api.ts` (leaves `NEXT_PUBLIC_API_URL` empty so browser requests never bypass the BFF proxy).

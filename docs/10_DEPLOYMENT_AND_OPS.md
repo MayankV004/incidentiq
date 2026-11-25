@@ -23,6 +23,11 @@ For the single-node cost-capped demo, the compose stack runs SQLite (`/data/inci
 
 Only Caddy exposes host ports `80` and `443`. All Docker services define healthchecks, `restart: unless-stopped`, memory/CPU limits, and JSON log rotation (`max-size: 10m`, `max-file: 3`).
 
+For optional live-mode evaluation and telemetry capture, combine the monitoring overlay (`deploy/docker-compose.monitoring.yml` + `deploy/prometheus.yml`), which adds a Prometheus container (`127.0.0.1:9090`) and switches `DATA_MODE=live` across `mcp-metrics`, `mcp-logs`, and `incidentiq-api`:
+```bash
+docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.monitoring.yml --env-file .env up -d --build
+```
+
 ## 3. Environment variables (`.env.example`)
 
 ```

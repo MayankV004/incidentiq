@@ -9,7 +9,7 @@ IncidentIQ is a multi-agent AI on-call assistant. When a system alert fires, Lan
 | 01 | [PRD](01_PRD.md) | Problem, users, scope, requirements, success metrics |
 | 02 | [Architecture](02_ARCHITECTURE.md) | Components, data flow, sequence, design decisions |
 | 03 | [Tech Stack](03_TECH_STACK.md) | Every technology, why chosen, alternatives |
-| 04 | [Database Design](04_DATABASE_DESIGN.md) | Postgres and pgvector schema, ER diagram, indexes |
+| 04 | [Database Design](04_DATABASE_DESIGN.md) | SQLite (single-worker demo) & Postgres-compatible schema, ER diagram, migrations |
 | 05 | [API Spec](05_API_SPEC.md) | REST and streaming endpoints, schemas, errors |
 | 06 | [Agent and MCP Design](06_AGENT_AND_MCP_DESIGN.md) | LangGraph state, nodes, prompts contract, MCP tools |
 | 07 | [Evaluation Plan](07_EVALUATION_PLAN.md) | Benchmark, metrics, methodology, CI gate |
@@ -34,7 +34,7 @@ PRD, Architecture, Tech Stack, then Database, API and Agent/MCP design while bui
 
 ## Conventions
 
-- Code: Python 3.11+, type hints, Pydantic v2, async I/O.
+- Code: Python 3.12+, type hints, Pydantic v2, async I/O.
 - Every agent output is structured (Pydantic), never free text.
 - Every claim in a report must cite an evidence id.
 - Versions are pinned. Check current library docs before integrating, because MCP and LangGraph APIs change quickly.

@@ -14,10 +14,10 @@ class Alert(BaseModel):
     window_end: str
 
 class Evidence(BaseModel):
-    id: str                      # stable citation id, e.g. "ev_log_004"
-    kind: Literal["metric", "log", "runbook", "postmortem"]
+    id: str                      # stable citation id, e.g. "ev_log_004", "ev_mem_inc_123"
+    kind: Literal["metric", "log", "runbook", "postmortem", "memory"]
     summary: str
-    source_ref: str              # tool call id or kb chunk id
+    source_ref: str              # tool call id, kb chunk id, or db incident ref
     data: dict | None = None     # compact, capped
 
 class Action(BaseModel):
@@ -57,9 +57,11 @@ flowchart TD
   SUP --> MA[metrics_agent]
   SUP --> LA[logs_agent]
   SUP --> RA[runbook_agent]
+  SUP --> MEM[memory_agent]
   MA --> RCA[root_cause_agent]
   LA --> RCA
   RA --> RCA
+  MEM --> RCA
   RCA --> OG[output_guard]
   OG -->|ungrounded or low confidence| AB
   OG -->|no action| REP[report]
@@ -73,6 +75,8 @@ Implementation notes:
 - Parallel fan-out: the supervisor runs deterministically (zero LLM cost) and adds edges to the three specialists; LangGraph runs them concurrently and merges `evidence` through the reducer.
 - Per-call Scenario Isolation: `scenario_id` is stored on `IncidentState` and passed as a validated per-call argument through `mcp_client.py` to `metrics_server` and `logs_server` (no process-wide `os.environ["SCENARIO_ID"]` mutation). `metrics_server` also verifies `metrics.json["service"]` matches the requested service.
 - Knowledge Retrieval (BM25): `runbook_agent` uses in-memory Okapi BM25 lexical ranking with Jaccard overlap and service metadata boosting (`incidentiq/rag/engine.py`) and scans retrieved chunks for prompt injection before synthesis; dense vector embeddings and cross-encoders are deferred.
+- Episodic Agent Memory (`incidentiq/rag/memory.py`, `ENABLE_AGENT_MEMORY=true`): `memory_agent` runs in parallel with the specialists, queries SQLite only for human-verified past incidents (`incident_feedback` or decided `approvals`), enforces a lexical relevance floor (`MIN_LEXICAL_MEMORY_SCORE = 1.5` excluding service boost), scrubs PII and quarantines prompt injections, and preserves an anti-confirmation-bias rule in `root_cause_agent_node` (live `"metric"` or `"log"` telemetry anomalies are still required before diagnosing).
+- Static Typing Note: `IncidentState` stays a `TypedDict` for LangGraph runtime dict operations (`graph.py` carries `# pyrefly: ignore[bad-specialization]` due to upstream `TypedDictLikeV1 | TypedDictLikeV2` protocol specialization checks).
 - `steps` and `cost_usd` are checked dynamically against `MAX_AGENT_STEPS`, `INCIDENT_BUDGET_USD`, `ABSTAIN_THRESHOLD`, and `GROUND_THRESHOLD` (read from env); exceeding limits routes to `budget_exceeded` with honest abstention.
 - Prompt Leakage Guard: `output_guard_node` runs both groundedness verification and `GuardrailManager.scan_prompt_leakage` before finalizing output.
 
@@ -84,8 +88,9 @@ Implementation notes:
 | supervisor | alert | `plan` | small | none |
 | metrics_agent | alert, plan | Evidence[] | small | metrics MCP only |
 | logs_agent | alert, plan | Evidence[] | small | logs MCP only |
-| runbook_agent | alert, evidence so far (optional) | Evidence[] (runbook/postmortem) | small | RAG retriever |
-| root_cause_agent | all evidence | Hypothesis | strong | none (reasons over evidence only) |
+| runbook_agent | alert, evidence so far (optional) | Evidence[] (runbook/postmortem) | rules | BM25 RAG retriever |
+| memory_agent | alert, incident/scenario exclusions | Evidence[] (`ev_mem_*`) | rules | SQLite verified episodes |
+| root_cause_agent | all evidence | Hypothesis | strong (or fallback) | none (reasons over evidence only) |
 | output_guard | hypothesis, evidence | verified hypothesis or abstain | small/judge | none |
 | human_approval | action | decision | none | none |
 
@@ -119,7 +124,7 @@ Prompts live in `incidentiq/agents/prompts/*.md`, versioned in git, and each inc
 | logs_agent | logs: search_logs, get_error_clusters, get_log_context |
 | runbook_agent | RAG retriever only |
 | root_cause_agent | none |
-| remediation step (after approval only) | remediation: propose_restart, propose_rollback (dry-run) |
+| remediation step (after approval only) | remediation: restart_service, rollback_deploy, scale_up, review_config (dry-run) |
 
 A wrapper intercepts every tool call, checks the allow-list, logs the decision to `tool_calls.allowed`, and raises a `forbidden_tool` guardrail event if denied.
 
