@@ -1,6 +1,8 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   Radio,
   Activity,
@@ -17,8 +19,6 @@ import { useTheme } from "../context/ThemeContext";
 export type NavTab = "live" | "incidents" | "evaluation" | "security" | "shop";
 
 interface AppSidebarProps {
-  currentTab: NavTab;
-  onSelectTab: (tab: NavTab) => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   isInvestigating?: boolean;
@@ -26,27 +26,32 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({
-  currentTab,
-  onSelectTab,
   isCollapsed,
   onToggleCollapse,
   isInvestigating,
-  incidentCount = 8,
+  incidentCount = 0,
 }: AppSidebarProps) {
   const { theme, toggleTheme } = useTheme();
+  const pathname = usePathname() || "/";
 
   const navItems: {
     id: NavTab;
+    href: string;
     label: string;
     icon: React.ComponentType<{ className?: string }>;
     badge?: string | number;
   }[] = [
-    { id: "live", label: "Live Triage", icon: Radio, badge: isInvestigating ? "LIVE" : undefined },
-    { id: "incidents", label: "Incidents History", icon: Activity, badge: incidentCount },
-    { id: "evaluation", label: "Evaluation Suite", icon: BarChart3 },
-    { id: "security", label: "Security Matrix", icon: ShieldCheck, badge: "100%" },
-    { id: "shop", label: "Shop Chaos Lab", icon: Server },
+    { id: "live", href: "/", label: "Live Triage", icon: Radio, badge: isInvestigating ? "LIVE" : undefined },
+    { id: "incidents", href: "/incidents", label: "Incidents History", icon: Activity, badge: incidentCount },
+    { id: "evaluation", href: "/evaluation", label: "Evaluation Suite", icon: BarChart3 },
+    { id: "security", href: "/security", label: "Security Matrix", icon: ShieldCheck, badge: "100%" },
+    { id: "shop", href: "/shop", label: "Shop Chaos Lab", icon: Server },
   ];
+
+  const isRouteActive = (href: string) => {
+    if (href === "/") return pathname === "/";
+    return pathname === href || pathname.startsWith(`${href}/`);
+  };
 
   return (
     <aside
@@ -98,13 +103,13 @@ export function AppSidebar({
       {/* Navigation List */}
       <nav className="flex-1 py-3 px-2 space-y-1 overflow-y-auto">
         {navItems.map((item) => {
-          const isActive = currentTab === item.id;
+          const isActive = isRouteActive(item.href);
           const Icon = item.icon;
 
           return (
-            <button
+            <Link
               key={item.id}
-              onClick={() => onSelectTab(item.id)}
+              href={item.href}
               className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium transition-all group cursor-pointer ${
                 isActive
                   ? "bg-zinc-100 dark:bg-zinc-800/80 text-zinc-900 dark:text-zinc-100 shadow-xs dark:shadow-none font-semibold"
@@ -128,7 +133,7 @@ export function AppSidebar({
               {!isCollapsed && (
                 <div className="flex-1 flex items-center justify-between text-left truncate">
                   <span className="truncate">{item.label}</span>
-                  {item.badge && (
+                  {item.badge !== undefined && (
                     <span
                       className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
                         isActive
@@ -141,7 +146,7 @@ export function AppSidebar({
                   )}
                 </div>
               )}
-            </button>
+            </Link>
           );
         })}
       </nav>

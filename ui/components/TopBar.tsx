@@ -1,12 +1,12 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { ChevronRight, PanelLeft, Sun, Moon } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
-import { NavTab } from "./AppSidebar";
 
 interface TopBarProps {
-  currentTab: NavTab;
   isSidebarCollapsed: boolean;
   onToggleSidebar: () => void;
   activeIncidentTitle?: string;
@@ -14,21 +14,27 @@ interface TopBarProps {
 }
 
 export function TopBar({
-  currentTab,
   isSidebarCollapsed,
   onToggleSidebar,
   activeIncidentTitle,
   isInvestigating,
 }: TopBarProps) {
   const { theme, toggleTheme } = useTheme();
+  const pathname = usePathname() || "/";
 
-  const tabLabels: Record<NavTab, string> = {
-    live: "Live Triage",
-    incidents: "Incidents History",
-    evaluation: "Evaluation Suite",
-    security: "Security Matrix",
-    shop: "Shop Chaos Lab",
-  };
+  const routeInfo = (() => {
+    if (pathname.startsWith("/incidents/")) {
+      const incidentId = decodeURIComponent(pathname.slice("/incidents/".length));
+      return { label: "Incidents History", href: "/incidents", subLabel: incidentId };
+    }
+    if (pathname === "/incidents") return { label: "Incidents History", href: "/incidents" };
+    if (pathname === "/evaluation") return { label: "Evaluation Suite", href: "/evaluation" };
+    if (pathname === "/security") return { label: "Security Matrix", href: "/security" };
+    if (pathname === "/shop") return { label: "Shop Chaos Lab", href: "/shop" };
+    return { label: "Live Triage", href: "/" };
+  })();
+
+  const breadcrumbTail = routeInfo.subLabel || activeIncidentTitle;
 
   return (
     <header className="sticky top-0 z-30 h-14 bg-white/90 dark:bg-[#09090b]/90 backdrop-blur-md border-b border-zinc-200/80 dark:border-zinc-800/80 px-6 flex items-center justify-between transition-colors">
@@ -45,16 +51,21 @@ export function TopBar({
         )}
 
         <div className="flex items-center gap-1.5 text-xs text-zinc-400 dark:text-zinc-500 font-medium">
-          <span className="hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors">IncidentIQ</span>
+          <Link href="/" className="hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors">
+            IncidentIQ
+          </Link>
           <ChevronRight className="w-3.5 h-3.5 text-zinc-300 dark:text-zinc-600" />
-          <span className="text-zinc-900 dark:text-zinc-200 font-semibold">
-            {tabLabels[currentTab]}
-          </span>
-          {activeIncidentTitle && (
+          <Link
+            href={routeInfo.href}
+            className="text-zinc-900 dark:text-zinc-200 font-semibold hover:underline"
+          >
+            {routeInfo.label}
+          </Link>
+          {breadcrumbTail && (
             <>
               <ChevronRight className="w-3.5 h-3.5 text-zinc-300 dark:text-zinc-600" />
               <span className="text-zinc-500 dark:text-zinc-400 font-mono truncate max-w-[200px]">
-                {activeIncidentTitle}
+                {breadcrumbTail}
               </span>
             </>
           )}

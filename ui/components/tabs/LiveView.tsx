@@ -15,26 +15,44 @@ import { createIncident, submitApproval } from "../../lib/api";
 interface LiveViewProps {
   scenarios: Scenario[];
   initialScenario?: Scenario;
+  activeIncidentId?: string | null;
+  onActiveIncidentChange?: (id: string | null) => void;
   onIncidentCreated?: () => void;
 }
 
-export function LiveView({ scenarios, initialScenario, onIncidentCreated }: LiveViewProps) {
+export function LiveView({
+  scenarios,
+  initialScenario,
+  activeIncidentId: controlledIncidentId,
+  onActiveIncidentChange,
+  onIncidentCreated,
+}: LiveViewProps) {
   const [selectedScenario, setSelectedScenario] = useState<Scenario | null>(
     initialScenario || scenarios[0] || null
   );
-  const [activeIncidentId, setActiveIncidentId] = useState<string | null>(null);
-  const [activeIncident, setActiveIncident] = useState<IncidentDetail | null>(null);
+  const [uncontrolledIncidentId, setUncontrolledIncidentId] = useState<string | null>(null);
+  const [optimisticIncident, setOptimisticIncident] = useState<IncidentDetail | null>(null);
   const [selectedEvidence, setSelectedEvidence] = useState<Evidence | null>(null);
   const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
   const [isLaunching, setIsLaunching] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const activeScenario = selectedScenario || initialScenario || scenarios[0] || null;
+  const activeIncidentId =
+    controlledIncidentId !== undefined ? controlledIncidentId : uncontrolledIncidentId;
+
+  const setActiveIncidentId = (id: string | null) => {
+    if (controlledIncidentId === undefined) {
+      setUncontrolledIncidentId(id);
+    }
+    onActiveIncidentChange?.(id);
+  };
 
   const {
+    incident: streamedIncident,
     events,
     status,
     setStatus,
+    refreshIncident,
     evidenceList,
     hypothesis,
     approval,
@@ -43,7 +61,24 @@ export function LiveView({ scenarios, initialScenario, onIncidentCreated }: Live
     latencyMs,
     langfuseTraceUrl,
     error,
-  } = useIncidentStream(activeIncidentId);
+  } = useIncidentStream(activeIncidentId, () => {
+    setOptimisticIncident(null);
+    setActiveIncidentId(null);
+  });
+
+  const activeIncident =
+    streamedIncident && streamedIncident.incident_id === activeIncidentId
+      ? streamedIncident
+      : optimisticIncident && optimisticIncident.incident_id === activeIncidentId
+        ? optimisticIncident
+        : null;
+
+  const matchedScenario =
+    activeIncident?.scenario_id
+      ? scenarios.find((s) => s.id === activeIncident.scenario_id) || null
+      : null;
+
+  const activeScenario = selectedScenario || matchedScenario || initialScenario || scenarios[0] || null;
 
   const handleLaunch = async () => {
     if (!activeScenario) return;
@@ -58,8 +93,7 @@ export function LiveView({ scenarios, initialScenario, onIncidentCreated }: Live
         scenario_id: activeScenario.id,
       });
 
-      setActiveIncidentId(res.incident_id);
-      setActiveIncident({
+      setOptimisticIncident({
         incident_id: res.incident_id,
         scenario_id: activeScenario.id,
         alert: {
@@ -71,6 +105,7 @@ export function LiveView({ scenarios, initialScenario, onIncidentCreated }: Live
         status: "queued",
         created_at: Date.now(),
       });
+      setActiveIncidentId(res.incident_id);
       onIncidentCreated?.();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Failed to launch incident");
@@ -89,6 +124,7 @@ export function LiveView({ scenarios, initialScenario, onIncidentCreated }: Live
       await submitApproval(activeIncidentId, "approve", approval.approval_id);
       setStatus("remediation_executed");
       setIsApprovalModalOpen(false);
+      await refreshIncident();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Approval execution failed");
     }
@@ -103,6 +139,7 @@ export function LiveView({ scenarios, initialScenario, onIncidentCreated }: Live
     try {
       await submitApproval(activeIncidentId, "reject", approval.approval_id);
       setStatus("rejected_by_human");
+      await refreshIncident();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Reject execution failed");
     }
