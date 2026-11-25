@@ -133,6 +133,26 @@ flowchart TD
 * **Slide-over Citation Drawer:** Inspect raw metrics summaries and sanitized log lines with one click.
 * **Interactive Dry-Run Modal:** Confirms remediation authorization and presents verifiable execution receipts.
 
+#### UI Screenshots
+
+**Live Triage & Multi-Agent Timeline**
+![IncidentIQ Live Triage Timeline](docs/screenshots/live-triage-timeline.png)
+
+**Grounded Diagnosis & Dry-Run Approval Gate**
+![IncidentIQ Grounded Report and Dry-Run Approval](docs/screenshots/live-triage-approval.png)
+
+**Calibrated Honest Abstention**
+![IncidentIQ Calibrated Honest Abstention](docs/screenshots/honest-abstention.png)
+
+**Incidents History**
+![IncidentIQ Incidents History](docs/screenshots/incidents-history.png)
+
+**Evaluation Suite**
+![IncidentIQ Evaluation Suite](docs/screenshots/evaluation-suite.png)
+
+**Security Matrix**
+![IncidentIQ Security Matrix](docs/screenshots/security-matrix.png)
+
 ---
 
 ## 4. Benchmark Results (`IncidentBench-mini`) & Evaluation Methodology
@@ -306,7 +326,7 @@ The following design decisions and scope boundaries are tracked for future miles
 * **Single-Worker Enforcement & LRU Eviction:** In-memory state uses an LRU cache (`MAX_INCIDENTS_IN_MEMORY=1000`) with automatic write-through to SQLite/Postgres. Single-worker mode (`WORKERS=1` / `WEB_CONCURRENCY=1`) is strictly enforced at startup to prevent state divergence across process boundaries without Redis. Incidents in `awaiting_approval` are persisted to disk and cleanly resumable after server restarts.
 * **Lexical RAG Engine:** Knowledge retrieval uses Okapi BM25 ranking and token-level Jaccard overlap on curated markdown runbooks. Dense vector embeddings (`sentence-transformers`) and cross-encoder reranking are deferred to preserve fast startup and low memory footprint.
 * **Scenario Coverage:** The benchmark suite currently includes 8 high-fidelity curated scenarios (Easy, Medium, Ambiguous). Expanding to 30 scenarios with a 20/10 dev/held-out split is tracked on the roadmap.
-* **Dry-Run Remediation:** Action execution is strictly dry-run only; actions return cryptographically signed capability receipts and log intent without altering external production infrastructure.
+* **Dry-Run Remediation (Future Live Execution):** Action execution in this release is strictly dry-run only; actions return cryptographically signed capability receipts and log intent without altering external production infrastructure. Enabling real production execution (`REMEDIATION_MODE=live` against Docker, Kubernetes, or GitOps PR workflows behind the existing single-use HMAC capability tokens) is deferred as future work and requires a separate security review (credential isolation, RBAC/least-privilege scoping, and blast-radius controls).
 * **MCP Invocation Mode:** FastMCP server tools are invoked as direct in-process calls during replay evaluation; streamable HTTP transport is supported when running against live container services.
 
 ---
