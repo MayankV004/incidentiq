@@ -1,54 +1,61 @@
-# Operational Knowledge Base & BM25 Retrieval Engine 📚
+# Knowledge Base & BM25 Retrieval
 
-This directory houses the curated operational runbooks and past incident postmortems ingested by IncidentIQ's **Runbook RAG Agent** via an in-memory BM25 lexical ranking engine.
+This folder holds markdown runbooks and past incident reports searched by the Runbook Agent.
+Retrieval runs locally in memory using keyword scoring with no vector database.
 
 ---
 
-## 1. Directory Structure
+## 1. Files
 
-```
+```text
 knowledge/
-├── runbooks/                            # Actionable operational procedure manuals
-│   ├── orders_db_pool.md                # DB connection pool sizing & leak troubleshooting
-│   ├── payments_timeout.md              # Downstream payment gateway timeout mitigation
-│   ├── memory_leaks.md                  # Heap surge identification and graceful recycling
-│   ├── slow_queries.md                  # Unindexed query detection and explain analyze
-│   ├── cache_failure.md                 # Redis cache connection drops & eviction stampedes
-│   └── bad_deploy_config.md             # CrashLoops from missing environment variables / config errors
-└── postmortems/                         # Historical incident reports & lessons learned
-    ├── incident_104_db_pool_leak.md     # P0: Orders connection leak caused by retry bug
-    ├── incident_108_cache_eviction_storm.md # P1: Redis limit reached triggering PostgreSQL stampede
-    └── incident_112_bad_deploy_config.md    # P0: Payments CrashLoop from missing env secret in release
+├── runbooks/
+│   ├── bad_deploy_config.md
+│   ├── cache_failure.md
+│   ├── memory_leaks.md
+│   ├── orders_db_pool.md
+│   ├── payments_timeout.md
+│   └── slow_queries.md
+└── postmortems/
+    ├── incident_104_db_pool_leak.md
+    ├── incident_108_cache_eviction_storm.md
+    └── incident_112_bad_deploy_config.md
 ```
 
 ---
 
-## 2. In-Memory BM25 Retrieval Engine (`incidentiq/rag/engine.py`)
+## 2. How Retrieval Works (`incidentiq/rag/engine.py`)
 
-IncidentIQ avoids heavy vector database infrastructure and vector embedding API latency by using a pure Python **BM25 Lexical Ranking Engine** tailored for engineering runbooks:
+`HybridRAGEngine` loads all markdown files under `knowledge/` at startup:
+1. Splits each file on `##` headings and creates chunk IDs like `doc_orders_db_pool_sec_0`.
+2. In `runbook_agent_node`, evidence IDs are prefixed with `ev_kb_` (for example `ev_kb_doc_orders_db_pool_sec_0`).
+3. Scores every chunk against `f"{service} {alert.symptom}"` using:
+   * **Okapi BM25** (`k1 = 1.5`, `b = 0.75`) weighted by `0.6`.
+   * **Jaccard token overlap** weighted by `15.0`.
+   * **Service metadata boost** (`+2.5`) when the document's `Service:` matches the alert service.
 
-* **Sub-2ms Query Latency:** In-memory tokenization and inverted index ranking runs locally without external network overhead.
-* **Service-Specific Metadata Boosting:** Automatically multiplies relevance scores when a runbook's title or tags match the alert target service (`orders`, `payments`, `gateway`).
-* **Section-Level Chunking:** Splits documents on markdown headings (`##`), attaching a deterministic citation key (e.g., `ev_kb_orders_db_pool_sec_0`).
-
----
-
-## 3. Retrieval Benchmark & Evaluation (`evals/run_retrieval_eval.py`)
-
-IncidentIQ evaluates runbook retrieval accuracy against a 20-query benchmark (`evals/retrieval_queries.json`) covering real-world SRE alert symptoms, stack trace snippets, and past incident postmortems:
-
-* **Hit@3:** `100.0%` (20/20 target operational runbooks and postmortems retrieved in top 3).
-* **MRR (Mean Reciprocal Rank):** `0.9500` across all evaluated queries (18 queries at rank 1, 2 at rank 2).
-* **Pure Lexical Search (without service boosting):** `Hit@3 = 100.0%`, `MRR = 0.9167`.
-* **Zero External Dependencies:** Eliminates external vector database infrastructure (no Qdrant, no Chroma). Runs locally in `< 2ms`.
+There are no embeddings and no external vector databases.
 
 ---
 
-## 3. Runbook Structure & Grounded Citations
+## 3. Retrieval Benchmark Results
 
-Every runbook follows a strict structure:
-1. **Symptoms & Signals:** Specific Prometheus metrics and log signatures.
-2. **Immediate Remediation:** Safe mitigation steps (restart, scale, configuration tuning).
-3. **Investigation Checklist:** Commands and queries to confirm the root cause.
+Measured offline against the 20 queries in `evals/retrieval_queries.json`:
 
-When the RAG Agent discovers a matching runbook section, it attaches the section ID as structured evidence, enabling full human verification inside the UI Citation Drawer.
+| Metric | Value | Status | Source |
+|---|---|---|---|
+| **Hit@3** | 100.0% (20/20 queries in top 3) | measured (offline queries) | [../evals/results/retrieval_summary.json](../evals/results/retrieval_summary.json) |
+| **MRR (Mean Reciprocal Rank)** | 0.9750 (19 at rank 1, 1 at rank 2) | measured (offline queries) | [../evals/results/retrieval_summary.json](../evals/results/retrieval_summary.json) |
+| **Query Latency** | not measured yet | not measured yet | — |
+
+To run the retrieval check from the repo root:
+```bash
+PYTHONPATH=. uv run python evals/run_retrieval_eval.py
+```
+
+---
+
+## 4. Safety Note
+
+In `incidentiq/agents/nodes.py`, `runbook_agent_node` scans retrieved chunks with `GuardrailManager.scan_injection` before passing text to the synthesis step.
+If a chunk matches an injection pattern, its preview is replaced with `[QUARANTINED_POTENTIAL_INJECTION]`.

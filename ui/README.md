@@ -1,128 +1,103 @@
-# IncidentIQ Control Plane Dashboard (Frontend)
+# IncidentIQ Web Control Plane (`ui/`)
 
-> **Real-Time SRE Autonomous On-Call & Incident Control Dashboard**  
-> Powered by **Next.js 16 (App Router + Turbopack)**, **React 19**, **Tailwind CSS 4**, and **Motion**.
-
----
-
-## 1. Overview
-
-The `ui/` directory houses the real-time observability and intervention control plane for **IncidentIQ**. It visualizes the multi-agent reasoning steps of LangGraph, streams telemetry citations via Server-Sent Events (SSE), provides one-click human-in-the-loop remediation signing, and displays dynamic evaluation benchmarks and adversarial security suites.
-
-```
-┌───────────────────────────────────────────────────────────────────────────────────┐
-│ IncidentIQ Control Plane                                      [● Live] [Theme ☼] │
-├───────────────┬───────────────────────────────────┬───────────────────────────────┤
-│ Navigation    │ Real-Time Agent Reasoning Stream   │ Root-Cause Diagnosis & Report │
-│               │                                   │                               │
-│ [⚡ Live Run]  │ 1. [PASS] Input Guardrail         │ Hypothesis: Orders DB pool    │
-│ [📋 History]  │ 2. [EXEC] Metrics Specialist      │ Confidence: 92% (Grounded)    │
-│ [📊 Evals]    │ 3. [EXEC] Logs Specialist         │ ──────────── Evidence ─────── │
-│ [🛡 Security] │ 4. [EXEC] Runbook RAG Specialist  │ [ev_prom_01] connection spikes│
-│ [🏪 Shop Svc] │ 5. [PASS] Groundedness Guardrail  │ [ev_logs_03] pool acquisition │
-│               │ 6. [WAIT] Human Approval Required │ [ev_kb_001] runbook match     │
-│               │                                   │ [ Approve Remediation ⚡ ]    │
-└───────────────┴───────────────────────────────────┴───────────────────────────────┘
-```
+This folder holds the Next.js 16 web dashboard for IncidentIQ.
+It uses React 19, Tailwind CSS 4, Motion, and a server-side proxy so browser clients never see your API key.
 
 ---
 
-## 2. Key Architectural Features
+## 1. Routes and Features
 
-### ⚡ Server-Sent Events (SSE) Streaming
-Instead of clunky polling intervals, the UI hooks into FastAPI's streaming pipeline via [`useIncidentStream.ts`](hooks/useIncidentStream.ts):
-- Subscribes to `GET /v1/incidents/{id}/stream`.
-- Progressively renders agent step transitions (`started`, `completed`, `failed`).
-- Immediately reflects dynamic cost updates, latency counters, and token usage without page refetches.
+* **`/` ([`app/page.tsx`](app/page.tsx)):** Live Triage page. You pick a scenario, launch an investigation, watch steps stream live, and approve or reject dry-run actions. Active incidents stay saved in `?incident=<id>` and `sessionStorage` when you reload or switch pages.
+* **`/incidents` ([`app/incidents/page.tsx`](app/incidents/page.tsx)):** Table of saved investigations loaded from SQLite. Click any row to open `/incidents/[id]`.
+* **`/incidents/[id]` ([`app/incidents/[id]/page.tsx`](app/incidents/%5Bid%5D/page.tsx)):** Replay or approve a specific saved incident.
+* **`/evaluation` ([`app/evaluation/page.tsx`](app/evaluation/page.tsx)):** Scorecard loaded from `/api/v1/evals`.
+* **`/security` ([`app/security/page.tsx`](app/security/page.tsx)):** Red-team matrix loaded from `/api/v1/redteam`.
+* **`/shop` ([`app/shop/page.tsx`](app/shop/page.tsx)):** Summary of the internal `shop/` demo services.
 
-### 🛡️ Human-in-the-Loop Capability Token Signing
-When an agent proposes an infrastructure remediation action (e.g. database pool expansion or pod restarts), the UI renders an interactive cryptographic authorization prompt ([`ApprovalModal.tsx`](components/ApprovalModal.tsx)):
-- Displays the target microservice, dry-run shell command, and safety rationale.
-- Passes the cryptographically signed `approval_token` to `POST /v1/incidents/{id}/approval`.
-- Captures dry-run execution receipts in real time.
-
-### 🔍 Grounded Citation Drawer
-Every claim made in an agent's hypothesis is backed by an evidence key (`ev_prom_*`, `ev_logs_*`, `ev_kb_*`).
-- Clicking any citation opens the slide-over [`CitationSheet.tsx`](components/CitationSheet.tsx).
-- Inspect raw Prometheus Z-score anomalies, cluster-extracted log payloads, or indexed runbook passages.
-
-### 🎨 Design System & Visual Polish
-- **Color Palette:** High-contrast dark engineering console with electric neon lime accents (`#a3e635` / `lime-400`).
-- **Sidebar UX:** Notion-style collapsible navigation rail ([`AppSidebar.tsx`](components/AppSidebar.tsx)) with tooltip hints in collapsed mode.
-- **Theme Engine:** Zero-flicker dark/light mode toggle with native **View Transitions API** circular radial ripple originating from the cursor's click position ([`ThemeContext.tsx`](context/ThemeContext.tsx)).
+### Key Architectural Pieces
+* **Server-Side Auth Proxy ([`app/api/v1/[...path]/route.ts`](app/api/v1/%5B...path%5D/route.ts)):** Browser code calls same-origin `/api/v1/*`. The Next.js server adds `X-API-Key` from server env `API_KEY` and forwards requests and **SSE** streams to `API_INTERNAL_URL`.
+* **Live SSE Hook ([`hooks/useIncidentStream.ts`](hooks/useIncidentStream.ts)):** Fetches saved incident state first, then opens an `EventSource` to `/api/v1/incidents/{id}/stream` while an incident is still running.
+* **Approval Safety ([`components/ApprovalModal.tsx`](components/ApprovalModal.tsx), [`components/tabs/LiveView.tsx`](components/tabs/LiveView.tsx)):** Sends `{ decision, approval_id }` (never raw HMAC capability tokens) to `POST /api/v1/incidents/{id}/approval`.
+* **Citation Drawer ([`components/CitationSheet.tsx`](components/CitationSheet.tsx)):** Opens raw metrics, sanitized logs, and runbook chunks when you click `ev_metric_*`, `ev_log_*`, or `ev_kb_*` pills.
 
 ---
 
-## 3. Directory & Component Structure
+## 2. Directory Structure
 
-```
+```text
 ui/
 ├── app/
-│   ├── globals.css         # Tailwind CSS v4 variables & @custom-variant dark config
-│   ├── layout.tsx          # Root HTML layout with ThemeProvider and font optimization
-│   └── page.tsx            # Main shell rendering navigation, TopBar, and view switcher
+│   ├── api/v1/[...path]/route.ts # Server proxy injecting X-API-Key + SSE passthrough
+│   ├── evaluation/page.tsx       # /evaluation route
+│   ├── incidents/page.tsx        # /incidents history route
+│   ├── incidents/[id]/page.tsx   # /incidents/[id] detail route
+│   ├── security/page.tsx         # /security matrix route
+│   ├── shop/page.tsx             # /shop topology route
+│   ├── globals.css               # Tailwind CSS v4 config
+│   ├── layout.tsx                # Root HTML layout + ThemeProvider + AppShell
+│   ├── page.tsx                  # / Live Triage route
+│   ├── robots.ts                 # Robots metadata
+│   └── sitemap.ts                # Sitemap for app routes
 ├── components/
-│   ├── AppSidebar.tsx      # Collapsible navigation rail (Live, History, Evals, Security, Shop)
-│   ├── TopBar.tsx          # Scenario picker dropdown, trigger button, and status indicators
-│   ├── ScenarioPicker.tsx  # Preset benchmark scenario selector (001 - 008)
-│   ├── AgentTimeline.tsx   # Visualized LangGraph DAG step progression with pulsing nodes
-│   ├── ReportView.tsx      # Multi-tab diagnosis panel (Hypothesis, Evidence, Steps, Tracing)
-│   ├── CitationSheet.tsx   # Slide-over evidence viewer for metrics, logs, and runbooks
-│   ├── ApprovalModal.tsx   # Cryptographic remediation signing dialog
-│   ├── AbstainedPanel.tsx  # Honest abstention banner shown when confidence < threshold
-│   ├── FailedPanel.tsx     # Resilient error boundary banner for system interruptions
+│   ├── AppShell.tsx              # Persistent sidebar + top bar shell across routes
+│   ├── AppSidebar.tsx            # Collapsible navigation links
+│   ├── TopBar.tsx                # Breadcrumbs, live status pill, and theme toggle
+│   ├── ScenarioPicker.tsx        # Scenario selector (001–008)
+│   ├── AgentTimeline.tsx         # Step-by-step investigation timeline
+│   ├── ReportView.tsx            # Report, Evidence, and Trace tabs + approval UI
+│   ├── CitationSheet.tsx         # Slide-over evidence inspector
+│   ├── ApprovalModal.tsx         # Dry-run approval confirmation modal
+│   ├── AbstainedPanel.tsx        # Abstention view for weak or normal telemetry
+│   ├── FailedPanel.tsx           # Failure and budget_exceeded error view
 │   └── tabs/
-│       ├── LiveView.tsx        # Split-pane active triage console (Timeline + Report)
-│       ├── IncidentsView.tsx   # Persistent database history table (loaded from SQLite)
-│       ├── EvaluationView.tsx  # Versioned IncidentBench-mini scorecard and metric gauges
-│       ├── SecurityView.tsx    # Adversarial red-team test matrix and defense results
-│       └── ShopView.tsx        # Microservices topology and live container health checks
-├── context/
-│   └── ThemeContext.tsx    # View Transitions radial-ripple theme management
-├── hooks/
-│   └── useIncidentStream.ts# React SSE subscriber for real-time LangGraph event streaming
-└── lib/
-    ├── api.ts              # Strongly typed REST client for the FastAPI control plane
-    └── utils.ts            # Formatting helpers (currencies, timestamps, Tailwind merge)
+│       ├── LiveView.tsx
+│       ├── IncidentsView.tsx
+│       ├── EvaluationView.tsx
+│       ├── SecurityView.tsx
+│       └── ShopView.tsx
+├── context/ThemeContext.tsx      # Dark/light theme toggle (View Transitions API)
+├── hooks/useIncidentStream.ts    # Fetch + SSE hydration hook
+├── lib/api.ts                    # Same-origin /api/v1/* REST helpers
+├── lib/utils.ts                  # Formatting helpers
+└── types/api.ts                  # TypeScript API types
 ```
 
 ---
 
-## 4. Getting Started
+## 3. Getting Started
 
 ### Prerequisites
-- Node.js 18.18+ or 20+
-- `pnpm` (recommended), `npm`, or `bun`
+* Node.js 22+ and `pnpm`
 
-### Installation
+### Install & Run Locally
+
+1. Install packages from the lockfile:
+   ```bash
+   cd ui
+   CI=true pnpm install --frozen-lockfile
+   ```
+
+2. Start the FastAPI backend first on port `8000` (from the repo root, see [`../README.md`](../README.md)).
+
+3. Start the Next.js server with `API_INTERNAL_URL` and the matching `API_KEY`:
+   ```bash
+   set -a && source ../.env && set +a
+   API_INTERNAL_URL=http://127.0.0.1:8000 pnpm dev
+   ```
+   Open `http://localhost:3000`.
+
+### Lint, Typecheck & Build
+
 ```bash
-cd ui
-pnpm install
-```
-
-### Local Development Server
-Start the Turbopack development server on port 3000:
-```bash
-pnpm dev
-```
-Open **`http://localhost:3000`** in your browser. Ensure the backend FastAPI service is running concurrently on port 8000 (`uv run uvicorn incidentiq.api.main:app --port 8000`).
-
-### Production Build & Linting
-```bash
-# Verify TypeScript types and build optimized static assets
-pnpm build
-
-# Run ESLint validation
 pnpm lint
+./node_modules/.bin/tsc --noEmit
+NEXT_PUBLIC_API_URL= pnpm build
 ```
 
 ---
 
-## 5. Environment Variables
+## 4. Environment Variables
 
-The dashboard works out-of-the-box with standard defaults. If your backend runs on a custom host or port, configure `ui/.env.local`:
-
-```ini
-# Backend API Base URL (defaults to http://localhost:8000)
-NEXT_PUBLIC_API_URL=http://localhost:8000
-```
+* `API_KEY` (server-side, required): Secret sent upstream in `X-API-Key` by the `/api/v1/*` proxy.
+* `API_INTERNAL_URL` (server-side, default `http://incidentiq-api:8000`): FastAPI base URL. Set to `http://127.0.0.1:8000` outside Docker.
+* `NEXT_PUBLIC_API_URL` (client build-time, keep empty `""`): Leave unset or empty so browser requests stay same-origin (`/api/v1/*`). Do not set it to `http://localhost:8000` in `ui/.env.local`, or browser calls will bypass `/api/v1` and fail with 404.
