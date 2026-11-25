@@ -1,0 +1,44 @@
+# Optional live Prometheus monitoring & live-data overlay for capturing real fault scenarios.
+# Usage: docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.monitoring.yml up -d --build
+services:
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    restart: unless-stopped
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prom_data:/prometheus
+    expose:
+      - "9090"
+    ports:
+      - "127.0.0.1:9090:9090"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9090/-/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    mem_limit: 512m
+    cpus: 0.5
+
+  mcp-metrics:
+    environment:
+      - DATA_MODE=live
+      - PROMETHEUS_URL=http://prometheus:9090
+    depends_on:
+      prometheus:
+        condition: service_healthy
+
+  mcp-logs:
+    environment:
+      - DATA_MODE=live
+
+  incidentiq-api:
+    environment:
+      - DATA_MODE=live
+      - PROMETHEUS_URL=http://prometheus:9090
+    depends_on:
+      prometheus:
+        condition: service_healthy
+
+volumes:
+  prom_data:

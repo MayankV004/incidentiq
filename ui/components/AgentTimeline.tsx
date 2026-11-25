@@ -27,6 +27,7 @@ const ORDERED_STEPS: StepMeta[] = [
   { node: "metrics_agent", name: "Metrics agent", defaultDetail: "pending metrics query" },
   { node: "logs_agent", name: "Logs agent", defaultDetail: "pending log clustering" },
   { node: "runbook_agent", name: "Runbook agent", defaultDetail: "pending runbook retrieval" },
+  { node: "memory_agent", name: "Memory agent", defaultDetail: "pending episodic memory recall" },
   { node: "root_cause_agent", name: "Root-cause agent", defaultDetail: "pending synthesis" },
   { node: "output_guard", name: "Output guard", defaultDetail: "pending groundedness check" },
 ];

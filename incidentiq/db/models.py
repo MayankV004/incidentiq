@@ -184,3 +184,22 @@ class EvalResultRecord(Base):
     hypothesis = Column(JSON, nullable=True)
     error = Column(Text, nullable=True)
     created_at = Column(Float, default=time.time)
+
+
+class IncidentFeedbackRecord(Base):
+    __tablename__ = "incident_feedback"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    incident_id = Column(
+        String(64),
+        ForeignKey("incidents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    verdict = Column(
+        String(32), nullable=False
+    )  # correct_root_cause | wrong_root_cause | good_abstention | false_alarm
+    corrected_category = Column(String(128), nullable=True)
+    notes = Column(Text, nullable=True)
+    submitted_by = Column(String(128), default="on_call_engineer")
+    created_at = Column(Float, default=time.time)

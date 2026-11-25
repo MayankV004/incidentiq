@@ -1,0 +1,20 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: "shop-gateway"
+    static_configs:
+      - targets: ["gateway:8001"]
+
+  - job_name: "shop-orders"
+    static_configs:
+      - targets: ["orders:8002"]
+
+  - job_name: "shop-payments"
+    static_configs:
+      - targets: ["payments:8003"]
+
+  - job_name: "shop-fake-external"
+    static_configs:
+      - targets: ["fake-external:8004"]

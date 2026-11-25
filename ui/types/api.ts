@@ -20,12 +20,28 @@ export interface Alert {
 export interface Evidence {
   id: string;
   kind?: string;
-  source?: "metric" | "log" | "runbook" | "postmortem";
+  source?: "metric" | "log" | "runbook" | "postmortem" | "memory";
   summary: string;
   source_ref?: string;
   raw_ref?: string;
   confidence?: number;
   data?: Record<string, unknown>;
+}
+
+export type FeedbackVerdict =
+  | "correct_root_cause"
+  | "wrong_root_cause"
+  | "good_abstention"
+  | "false_alarm";
+
+export interface IncidentFeedback {
+  id?: string;
+  incident_id: string;
+  verdict: FeedbackVerdict;
+  corrected_category?: string | null;
+  notes?: string | null;
+  submitted_by?: string;
+  created_at?: number;
 }
 
 export interface Action {
@@ -124,6 +140,7 @@ export interface IncidentDetail {
   latency_ms?: number;
   steps?: number;
   remediation_result?: Record<string, unknown>;
+  feedback?: IncidentFeedback;
   events?: IncidentEvent[];
   langfuse_trace_url?: string;
   error?: string;

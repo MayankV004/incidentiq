@@ -1,6 +1,8 @@
 import {
   EvalRunMetrics,
+  FeedbackVerdict,
   IncidentDetail,
+  IncidentFeedback,
   IncidentSummary,
   RedTeamCase,
   Scenario,
@@ -78,6 +80,28 @@ export async function submitApproval(
   });
   if (!res.ok) {
     throw new Error(await extractErrorMessage(res, "Approval request failed"));
+  }
+  return await res.json();
+}
+
+export async function submitFeedback(
+  incidentId: string,
+  payload: {
+    verdict: FeedbackVerdict;
+    corrected_category?: string;
+    notes?: string;
+  }
+): Promise<{ status: string; feedback: IncidentFeedback }> {
+  const res = await fetch(
+    `${API_BASE}/api/v1/incidents/${encodeURIComponent(incidentId)}/feedback`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  );
+  if (!res.ok) {
+    throw new Error(await extractErrorMessage(res, "Failed to record incident feedback"));
   }
   return await res.json();
 }

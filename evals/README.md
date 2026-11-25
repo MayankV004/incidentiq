@@ -119,6 +119,12 @@ PYTHONPATH=. uv run python evals/redteam/run_redteam.py
 
 # 5. Knowledge retrieval evaluation (20 queries, offline)
 PYTHONPATH=. uv run python evals/run_retrieval_eval.py
+
+# 6. Memory ablation check (memory OFF vs ON)
+APPROVAL_TOKEN_SECRET=test-secret PYTHONPATH=. uv run python evals/run_evals.py --name ablate-check --ablate-memory
+
+# 7. Score human-labeled live/shadow incidents from SQLite
+PYTHONPATH=. uv run python evals/score_live.py
 ```
 
 Running `evals/run_evals.py` writes `evals/results/<name>.json`.
@@ -127,9 +133,18 @@ Running `evals/run_retrieval_eval.py` overwrites `evals/results/retrieval_summar
 
 ---
 
-## 7. Adding New Scenarios
+## 7. Real-World Capture & Adding Scenarios
 
-1. Create a folder `scenarios/<number>_<name>/`.
-2. Add `alert.json`, `label.json`, `metrics.json`, and `logs.jsonl` matching existing folders.
-3. Add the new scenario ID to `dev` or `held_out` in `evals/splits.json` (`dev` has 6 IDs, `held_out` has 2 IDs).
-4. Re-run `evals/run_evals.py` to test the updated suite.
+1. For live fault capture with Prometheus, boot the monitoring overlay:
+   ```bash
+   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.monitoring.yml --env-file .env up -d --build
+   ```
+2. Capture a real telemetry window into `scenarios_real/<id>/`:
+   ```bash
+   PYTHONPATH=. uv run python scripts/capture_incident.py --scenario-id real_orders_01 --service orders --symptom "500 errors" --category db_pool_exhaustion
+   ```
+3. Run the benchmark on captured real scenarios:
+   ```bash
+   APPROVAL_TOKEN_SECRET=test-secret PYTHONPATH=. uv run python evals/run_evals.py --scenarios-dir scenarios_real --no-enforce --name real-capture-eval
+   ```
+4. Label live UI runs via **Correct diagnosis / Wrong diagnosis / Good abstention / Missed outage** (`POST /v1/incidents/{id}/feedback`), then score them with `evals/score_live.py`.

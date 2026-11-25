@@ -19,6 +19,7 @@ from incidentiq.db.repository import (
 )
 from incidentiq.guardrails.guards import GuardrailManager
 from incidentiq.rag.engine import get_rag_engine
+from incidentiq.rag.memory import retrieve_past_incidents
 from incidentiq.schemas.models import Action, Evidence, Hypothesis
 from incidentiq.security.tokens import (
     generate_capability_token,
@@ -228,10 +229,67 @@ def runbook_agent_node(state: IncidentState) -> dict[str, Any]:
     }
 
 
+def memory_agent_node(state: IncidentState) -> dict[str, Any]:
+    """Episodic Memory Agent: Recalls verified similar past incidents from SQLite."""
+    alert = state.get("alert")
+    if alert is None:
+        return {"evidence": [], "guardrail_flags": [], "cost_usd": 0.0, "steps": 1}
+
+    inc_id = state.get("incident_id")
+    scenario_id = state.get("scenario_id")
+    recalled = retrieve_past_incidents(
+        service=alert.service,
+        symptom=alert.symptom,
+        current_incident_id=inc_id,
+        current_scenario_id=scenario_id,
+        top_k=2,
+    )
+
+    new_evidence: list[Evidence] = []
+    guardrail_flags: list[str] = []
+    for item in recalled:
+        if item.get("injection_flagged"):
+            flag = f"memory_injection_flagged: {item['incident_id']}"
+            guardrail_flags.append(flag)
+            record_guardrail_event(
+                incident_id=inc_id,
+                phase="memory",
+                flag_type="memory_injection_flagged",
+                detail=flag,
+            )
+            continue
+
+        ev_id = f"ev_mem_{item['incident_id']}"
+        verdict = item.get("verdict", "verified")
+        cat = item.get("category") or "unknown"
+        summary = (
+            f"Past incident {item['incident_id']} on {item.get('service')} "
+            f"(verdict: {verdict}, score: {item.get('score')}, category: {cat}): "
+            f"{item.get('reasoning')}"
+        )
+        new_evidence.append(
+            Evidence(
+                id=ev_id,
+                kind="memory",
+                summary=summary,
+                source_ref=f"db:incidents:{item['incident_id']}",
+                data=item,
+            )
+        )
+
+    return {
+        "evidence": new_evidence,
+        "guardrail_flags": guardrail_flags,
+        "cost_usd": 0.0,
+        "steps": 1,
+    }
+
+
 def _call_llm_for_diagnosis(
     alert: Any,
     telemetry_evidence: list[Evidence],
     kb_evidence: list[Evidence],
+    memory_evidence: list[Evidence] | None = None,
     meta_out: dict[str, Any] | None = None,
 ) -> tuple[Hypothesis | None, str | None]:
     """Invokes LiteLLM for dynamic root cause diagnosis when an LLM is configured."""
@@ -271,10 +329,13 @@ def _call_llm_for_diagnosis(
         kb_prompt = "\n".join(
             [f"- [{e.id}] ({e.kind}): {e.summary}" for e in kb_evidence]
         )
+        memory_prompt = "\n".join(
+            [f"- [{e.id}] ({e.kind}): {e.summary}" for e in (memory_evidence or [])]
+        )
 
         system_prompt = (
             "You are the Root Cause Synthesis Agent for IncidentIQ, an autonomous on-call SRE copilot. "
-            "You are given alert details, telemetry anomalies (metrics & logs), and runbook context. "
+            "You are given alert details, telemetry anomalies (metrics & logs), runbook context, and optional verified past incident memory. "
             "Your job is to diagnose the root cause, assign a calibrated confidence score (0.00 - 1.00), "
             "cite all supporting evidence IDs, and propose a safe remediation action.\n\n"
             "CRITICAL RULES:\n"
@@ -300,6 +361,11 @@ def _call_llm_for_diagnosis(
             f"Telemetry Evidence:\n{telemetry_prompt}\n\n"
             f"Runbook & Postmortem Context:\n{kb_prompt}\n"
         )
+        if memory_prompt:
+            user_prompt += (
+                "\nVerified Past Incident Memory (reference only; live telemetry must corroborate):\n"
+                f"{memory_prompt}\n"
+            )
 
         kwargs: dict[str, Any] = {
             "model": model,
@@ -409,6 +475,7 @@ def root_cause_agent_node(state: IncidentState) -> dict[str, Any]:
 
     telemetry_evidence = [e for e in all_evidence if e.kind in ["metric", "log"]]
     kb_evidence = [e for e in all_evidence if e.kind in ["runbook", "postmortem"]]
+    memory_evidence = [e for e in all_evidence if e.kind == "memory"]
 
     # If no metrics anomalies and no error logs were discovered, we MUST abstain!
     inc_id = state.get("incident_id")
@@ -418,7 +485,7 @@ def root_cause_agent_node(state: IncidentState) -> dict[str, Any]:
             service=None,
             confidence=0.20,
             reasoning="Telemetry is completely normal. No metric anomalies or error logs were discovered.",
-            evidence_ids=[e.id for e in kb_evidence],
+            evidence_ids=[e.id for e in kb_evidence + memory_evidence],
             suggested_action=None,
             abstained=True,
             abstain_reason="Telemetry is healthy. No metric anomalies or error logs support a system outage.",
@@ -443,6 +510,7 @@ def root_cause_agent_node(state: IncidentState) -> dict[str, Any]:
         alert=alert,
         telemetry_evidence=telemetry_evidence,
         kb_evidence=kb_evidence,
+        memory_evidence=memory_evidence,
         meta_out=llm_meta,
     )
     if llm_hypothesis is not None:
@@ -566,10 +634,44 @@ def root_cause_agent_node(state: IncidentState) -> dict[str, Any]:
             detail="Restart service container to clear heap allocations",
         )
     else:
-        # Ambiguous / uncertain case
-        confidence = 0.35
-        category = None
-        reasoning = "Telemetry shows minor fluctuation but lacks a distinctive signature of known system outages."
+        verified_mem = next(
+            (
+                m
+                for m in memory_evidence
+                if isinstance(m.data, dict)
+                and m.data.get("verdict")
+                in ("correct_root_cause", "approval_approved")
+                and m.data.get("category")
+                and float(m.data.get("lexical_score") or 0.0) >= 2.0
+                and not m.data.get("injection_flagged")
+            ),
+            None,
+        )
+        has_metric_anomaly = any(e.kind == "metric" for e in telemetry_evidence)
+        if has_metric_anomaly and verified_mem and isinstance(verified_mem.data, dict):
+            category = str(verified_mem.data["category"])
+            confidence = 0.80
+            reasoning = (
+                f"Metric anomalies on '{service}' match verified past incident "
+                f"{verified_mem.data.get('incident_id')} ({category})."
+            )
+            past_act = verified_mem.data.get("suggested_action")
+            if isinstance(past_act, dict) and past_act.get("type") in (
+                "restart_service",
+                "rollback_deploy",
+                "review_config",
+                "scale_up",
+            ):
+                suggested_action = Action(
+                    type=past_act["type"],
+                    target=str(past_act.get("target") or service),
+                    detail=str(past_act.get("detail") or "Based on verified past incident"),
+                )
+        else:
+            # Ambiguous / uncertain case
+            confidence = 0.35
+            category = None
+            reasoning = "Telemetry shows minor fluctuation but lacks a distinctive signature of known system outages."
 
     # If confidence < threshold, abstain honestly
     abstained = confidence < get_abstain_threshold()

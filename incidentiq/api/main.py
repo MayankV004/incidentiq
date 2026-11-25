@@ -48,6 +48,7 @@ from incidentiq.db.repository import (
     get_incident_from_db,
     list_incidents_from_db,
     record_approval_decision,
+    record_incident_feedback,
     upsert_incident,
 )
 from incidentiq.db.session import SessionLocal
@@ -208,6 +209,21 @@ class ApprovalDecisionRequest(BaseModel):
     decision: str  # "approve" | "reject"
     approval_id: str | None = None
     approval_token: str | None = None
+
+
+class FeedbackRequest(BaseModel):
+    verdict: str  # "correct_root_cause" | "wrong_root_cause" | "good_abstention" | "false_alarm"
+    corrected_category: str | None = None
+    notes: str | None = None
+    submitted_by: str = "on_call_engineer"
+
+
+VALID_FEEDBACK_VERDICTS = {
+    "correct_root_cause",
+    "wrong_root_cause",
+    "good_abstention",
+    "false_alarm",
+}
 
 
 @app.get("/health")
@@ -390,7 +406,12 @@ def run_incident_workflow(incident_id: str, alert: Alert):
                         summary = f"Strategy formulated. Dispatched specialists: {', '.join(plan)}"
                         event_data = {"plan": plan}
 
-                    elif node in ("metrics_agent", "logs_agent", "runbook_agent"):
+                    elif node in (
+                        "metrics_agent",
+                        "logs_agent",
+                        "runbook_agent",
+                        "memory_agent",
+                    ):
                         event_type = "evidence_found"
                         node_ev = update.get("evidence", [])
                         for e in node_ev:
@@ -943,6 +964,33 @@ def handle_approval(incident_id: str, req: ApprovalDecisionRequest):
     except Exception as e:  # noqa: BLE001
         logger.error(f"DB update on approve failed: {e}")
     return {"status": "approved_and_executed", "result": exec_res}
+
+
+@app.post("/v1/incidents/{incident_id}/feedback")
+def submit_incident_feedback(incident_id: str, req: FeedbackRequest):
+    if req.verdict not in VALID_FEEDBACK_VERDICTS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid verdict '{req.verdict}'. Allowed: {sorted(VALID_FEEDBACK_VERDICTS)}",
+        )
+    inc = INCIDENTS_DB.get(incident_id) or get_incident_from_db(incident_id)
+    if not inc:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    clean_notes, _ = GuardrailManager.redact_pii(req.notes or "")
+    clean_corr, _ = GuardrailManager.redact_pii(req.corrected_category or "")
+    clean_user, _ = GuardrailManager.redact_pii(req.submitted_by or "on_call_engineer")
+
+    fb = record_incident_feedback(
+        incident_id=incident_id,
+        verdict=req.verdict,
+        corrected_category=clean_corr or None,
+        notes=clean_notes or None,
+        submitted_by=clean_user or "on_call_engineer",
+    )
+    inc["feedback"] = fb
+    INCIDENTS_DB[incident_id] = inc
+    return {"status": "recorded", "feedback": fb}
 
 
 @app.get("/v1/evals")

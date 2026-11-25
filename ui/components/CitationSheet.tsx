@@ -28,11 +28,14 @@ export function CitationSheet({ evidence, onClose }: CitationSheetProps) {
         return <Database className="w-4 h-4 text-sky-500" />;
       case "runbook":
       case "postmortem":
+      case "memory":
         return <FileText className="w-4 h-4 text-amber-500" />;
       default:
         return <ExternalLink className="w-4 h-4 text-zinc-400" />;
     }
   };
+
+  const evidenceKind = evidence.source || evidence.kind || "evidence";
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-xs transition-opacity animate-fade-in">
@@ -44,12 +47,12 @@ export function CitationSheet({ evidence, onClose }: CitationSheetProps) {
         {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-zinc-200/80 dark:border-zinc-800/80">
           <div className="flex items-center gap-2">
-            {getSourceIcon(evidence.source || "log")}
+            {getSourceIcon(evidenceKind)}
             <span className="font-mono text-sm font-semibold text-zinc-900 dark:text-zinc-100">
               {evidence.id}
             </span>
             <span className="text-[10px] uppercase font-mono tracking-wider px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700">
-              {evidence.source || "evidence"}
+              {evidenceKind}
             </span>
           </div>
           <button

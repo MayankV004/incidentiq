@@ -18,8 +18,9 @@ def run_benchmark(
     split: str = "all",
     enforce_thresholds: bool = True,
     delay_seconds: float | None = None,
+    scenarios_dir: str = "scenarios",
 ):
-    scenario_dirs = sorted(glob.glob(os.path.join("scenarios", "*")))
+    scenario_dirs = sorted(glob.glob(os.path.join(scenarios_dir, "*")))
     scenario_dirs = [
         d
         for d in scenario_dirs
@@ -261,12 +262,52 @@ if __name__ == "__main__":
         default=None,
         help="Seconds to sleep between live LLM scenarios (auto: 10.0s when LLM key set)",
     )
+    parser.add_argument(
+        "--scenarios-dir",
+        default="scenarios",
+        help="Directory containing scenario subfolders (e.g. scenarios or scenarios_real)",
+    )
+    parser.add_argument(
+        "--ablate-memory",
+        action="store_true",
+        help="Run twice (ENABLE_AGENT_MEMORY=false vs true) and report memory delta",
+    )
     args = parser.parse_args()
 
-    run_benchmark(
-        run_name=args.name,
-        repeats=args.repeats,
-        split=args.split,
-        enforce_thresholds=not args.no_enforce,
-        delay_seconds=args.delay,
-    )
+    if args.ablate_memory:
+        os.environ["ENABLE_AGENT_MEMORY"] = "false"
+        off_res = run_benchmark(
+            run_name=f"{args.name}-mem-off",
+            repeats=args.repeats,
+            split=args.split,
+            enforce_thresholds=False,
+            delay_seconds=args.delay,
+            scenarios_dir=args.scenarios_dir,
+        )
+        os.environ["ENABLE_AGENT_MEMORY"] = "true"
+        on_res = run_benchmark(
+            run_name=f"{args.name}-mem-on",
+            repeats=args.repeats,
+            split=args.split,
+            enforce_thresholds=not args.no_enforce,
+            delay_seconds=args.delay,
+            scenarios_dir=args.scenarios_dir,
+        )
+        delta_acc = round(
+            float(on_res.get("accuracy_pct", 0.0))
+            - float(off_res.get("accuracy_pct", 0.0)),
+            1,
+        )
+        print(
+            f"\n[MEMORY ABLATION] Accuracy OFF={off_res.get('accuracy_pct')}% "
+            f"vs ON={on_res.get('accuracy_pct')}% (delta: {delta_acc:+.1f}%)"
+        )
+    else:
+        run_benchmark(
+            run_name=args.name,
+            repeats=args.repeats,
+            split=args.split,
+            enforce_thresholds=not args.no_enforce,
+            delay_seconds=args.delay,
+            scenarios_dir=args.scenarios_dir,
+        )

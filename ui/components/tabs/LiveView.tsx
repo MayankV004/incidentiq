@@ -8,9 +8,9 @@ import { AbstainedPanel } from "../AbstainedPanel";
 import { FailedPanel } from "../FailedPanel";
 import { ApprovalModal } from "../ApprovalModal";
 import { CitationSheet } from "../CitationSheet";
-import { Evidence, IncidentDetail, Scenario } from "../../types/api";
+import { Evidence, FeedbackVerdict, IncidentDetail, Scenario } from "../../types/api";
 import { useIncidentStream } from "../../hooks/useIncidentStream";
-import { createIncident, submitApproval } from "../../lib/api";
+import { createIncident, submitApproval, submitFeedback } from "../../lib/api";
 
 interface LiveViewProps {
   scenarios: Scenario[];
@@ -145,6 +145,23 @@ export function LiveView({
     }
   };
 
+  const handleSubmitFeedback = async (
+    verdict: FeedbackVerdict,
+    correctedCategory?: string
+  ) => {
+    if (!activeIncidentId) return;
+    setActionError(null);
+    try {
+      await submitFeedback(activeIncidentId, {
+        verdict,
+        corrected_category: correctedCategory,
+      });
+      await refreshIncident();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to save feedback");
+    }
+  };
+
   return (
     <div className="w-full space-y-6">
       <ScenarioPicker
@@ -216,11 +233,18 @@ export function LiveView({
           onSelectEvidence={setSelectedEvidence}
           onRequestApproval={() => setIsApprovalModalOpen(true)}
           onReject={handleReject}
+          onSubmitFeedback={handleSubmitFeedback}
         />
       )}
 
       {status === "abstained" && (
-        <AbstainedPanel hypothesis={hypothesis} evidenceList={evidenceList} events={events} />
+        <AbstainedPanel
+          hypothesis={hypothesis}
+          evidenceList={evidenceList}
+          events={events}
+          feedback={activeIncident?.feedback}
+          onSubmitFeedback={handleSubmitFeedback}
+        />
       )}
 
       {(status === "failed" || status === "budget_exceeded") && (

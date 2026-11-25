@@ -1,20 +1,25 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { AlertTriangle } from "lucide-react";
-import { Evidence, Hypothesis, IncidentEvent } from "../types/api";
+import { Evidence, FeedbackVerdict, Hypothesis, IncidentEvent, IncidentFeedback } from "../types/api";
 
 interface AbstainedPanelProps {
   hypothesis: Hypothesis | null;
   evidenceList?: Evidence[];
   events?: IncidentEvent[];
+  feedback?: IncidentFeedback;
+  onSubmitFeedback?: (verdict: FeedbackVerdict) => Promise<void>;
 }
 
 export function AbstainedPanel({
   hypothesis,
   evidenceList = [],
   events = [],
+  feedback,
+  onSubmitFeedback,
 }: AbstainedPanelProps) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const confidence =
     hypothesis?.confidence !== undefined ? `${Math.round(hypothesis.confidence * 100)}%` : "—";
 
@@ -61,8 +66,51 @@ export function AbstainedPanel({
         </div>
       </div>
 
-      <div className="pt-2 text-zinc-500 dark:text-zinc-400 border-t border-amber-500/20">
-        Confidence: {confidence} — safe abstention triggered
+      <div className="pt-2 text-zinc-500 dark:text-zinc-400 border-t border-amber-500/20 flex flex-wrap items-center justify-between gap-3">
+        <span>Confidence: {confidence} — safe abstention triggered</span>
+        {onSubmitFeedback && (
+          <div className="flex items-center gap-2">
+            {feedback && (
+              <span className="text-zinc-400">Saved: {feedback.verdict}</span>
+            )}
+            <button
+              disabled={isSubmitting}
+              onClick={async () => {
+                setIsSubmitting(true);
+                try {
+                  await onSubmitFeedback("good_abstention");
+                } finally {
+                  setIsSubmitting(false);
+                }
+              }}
+              className={`px-2.5 py-1 rounded border transition-colors cursor-pointer disabled:opacity-50 ${
+                feedback?.verdict === "good_abstention"
+                  ? "bg-lime-400/15 border-lime-500/40 text-lime-700 dark:text-lime-400 font-semibold"
+                  : "border-amber-500/30 hover:bg-amber-500/10 text-zinc-700 dark:text-zinc-300"
+              }`}
+            >
+              Good abstention
+            </button>
+            <button
+              disabled={isSubmitting}
+              onClick={async () => {
+                setIsSubmitting(true);
+                try {
+                  await onSubmitFeedback("false_alarm");
+                } finally {
+                  setIsSubmitting(false);
+                }
+              }}
+              className={`px-2.5 py-1 rounded border transition-colors cursor-pointer disabled:opacity-50 ${
+                feedback?.verdict === "false_alarm"
+                  ? "bg-red-500/15 border-red-500/40 text-red-700 dark:text-red-400 font-semibold"
+                  : "border-amber-500/30 hover:bg-amber-500/10 text-zinc-700 dark:text-zinc-300"
+              }`}
+            >
+              Missed outage
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

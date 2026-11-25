@@ -5,6 +5,7 @@ from typing import Any
 from incidentiq.db.models import (
     ApprovalRecord,
     GuardrailEventRecord,
+    IncidentFeedbackRecord,
     IncidentRecord,
     LLMCallRecord,
     ToolCallRecord,
@@ -107,11 +108,34 @@ def append_event_to_db(incident_id: str, event: dict[str, Any]):
         db.commit()
 
 
+def _feedback_to_dict(fb: IncidentFeedbackRecord) -> dict[str, Any]:
+    return {
+        "id": fb.id,
+        "incident_id": fb.incident_id,
+        "verdict": fb.verdict,
+        "corrected_category": fb.corrected_category,
+        "notes": fb.notes,
+        "submitted_by": fb.submitted_by,
+        "created_at": fb.created_at,
+    }
+
+
 def get_incident_from_db(incident_id: str) -> dict[str, Any] | None:
-    """Retrieves an incident record from the database."""
+    """Retrieves an incident record and latest feedback from the database."""
     with SessionLocal() as db:
         rec = db.query(IncidentRecord).filter(IncidentRecord.id == incident_id).first()
-        return rec.to_dict() if rec else None
+        if not rec:
+            return None
+        data = rec.to_dict()
+        fb = (
+            db.query(IncidentFeedbackRecord)
+            .filter(IncidentFeedbackRecord.incident_id == incident_id)
+            .order_by(IncidentFeedbackRecord.created_at.desc())
+            .first()
+        )
+        if fb:
+            data["feedback"] = _feedback_to_dict(fb)
+        return data
 
 
 def list_incidents_from_db() -> list[dict[str, Any]]:
@@ -274,3 +298,161 @@ def record_approval_decision(
                 db.commit()
     except Exception as exc:  # noqa: BLE001
         logger.debug(f"Failed to record approvals decision telemetry: {exc}")
+
+
+def record_incident_feedback(
+    incident_id: str,
+    verdict: str,
+    corrected_category: str | None = None,
+    notes: str | None = None,
+    submitted_by: str = "on_call_engineer",
+) -> dict[str, Any]:
+    """Persists human evaluation feedback on an investigation outcome."""
+    with SessionLocal() as db:
+        fb = IncidentFeedbackRecord(
+            incident_id=incident_id,
+            verdict=verdict,
+            corrected_category=_safe_truncate(corrected_category, 128),
+            notes=_safe_truncate(notes, 500),
+            submitted_by=_safe_truncate(submitted_by, 128) or "on_call_engineer",
+            created_at=time.time(),
+        )
+        db.add(fb)
+        db.commit()
+        db.refresh(fb)
+        return _feedback_to_dict(fb)
+
+
+def list_memory_candidates(
+    exclude_incident_id: str | None = None,
+    exclude_scenario_id: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    """Loads resolved past incidents that have human verification (feedback or approval decision)."""
+    try:
+        with SessionLocal() as db:
+            fb_rows: list[Any] = (
+                db.query(IncidentFeedbackRecord.incident_id)
+                .distinct()
+                .all()
+            )
+            fb_ids = {str(row[0]) for row in fb_rows if row[0]}
+            ap_rows: list[Any] = (
+                db.query(ApprovalRecord.incident_id)
+                .filter(ApprovalRecord.decision.isnot(None))  # type: ignore[union-attr]
+                .distinct()
+                .all()
+            )
+            ap_ids = {str(row[0]) for row in ap_rows if row[0]}
+            verified_ids = fb_ids | ap_ids
+            if exclude_incident_id:
+                verified_ids.discard(exclude_incident_id)
+            if not verified_ids:
+                return []
+
+            query = db.query(IncidentRecord).filter(
+                IncidentRecord.id.in_(verified_ids),
+                IncidentRecord.hypothesis.isnot(None),  # type: ignore[union-attr]
+            )
+            if exclude_scenario_id:
+                query = query.filter(
+                    (IncidentRecord.scenario_id.is_(None))  # type: ignore[union-attr]
+                    | (IncidentRecord.scenario_id != exclude_scenario_id)
+                )
+            records = (
+                query.order_by(IncidentRecord.created_at.desc()).limit(limit).all()
+            )
+            if not records:
+                return []
+
+            inc_ids = [str(r.id) for r in records]
+            feedback_rows = (
+                db.query(IncidentFeedbackRecord)
+                .filter(IncidentFeedbackRecord.incident_id.in_(inc_ids))
+                .order_by(IncidentFeedbackRecord.created_at.desc())
+                .all()
+            )
+            latest_fb: dict[str, dict[str, Any]] = {}
+            for fb in feedback_rows:
+                inc_key = str(fb.incident_id)
+                if inc_key not in latest_fb:
+                    latest_fb[inc_key] = _feedback_to_dict(fb)
+
+            approval_rows = (
+                db.query(ApprovalRecord)
+                .filter(
+                    ApprovalRecord.incident_id.in_(inc_ids),
+                    ApprovalRecord.decision.isnot(None),  # type: ignore[union-attr]
+                )
+                .order_by(ApprovalRecord.decided_at.desc())
+                .all()
+            )
+            latest_appr: dict[str, dict[str, Any]] = {}
+            for ap in approval_rows:
+                inc_key = str(ap.incident_id)
+                if inc_key not in latest_appr:
+                    latest_appr[inc_key] = {
+                        "decision": ap.decision,
+                        "action": ap.action,
+                    }
+
+            candidates: list[dict[str, Any]] = []
+            for rec in records:
+                inc_key = str(rec.id)
+                fb_info = latest_fb.get(inc_key)
+                ap_info = latest_appr.get(inc_key)
+                if not fb_info and not ap_info:
+                    continue
+                hyp = rec.hypothesis if isinstance(rec.hypothesis, dict) else None
+                if not hyp:
+                    continue
+                if hyp.get("abstained") and not (
+                    fb_info and fb_info.get("verdict") in ("wrong_root_cause", "false_alarm", "good_abstention")
+                ):
+                    continue
+                candidates.append(
+                    {
+                        "incident_id": inc_key,
+                        "service": str(rec.service or ""),
+                        "symptom": str(rec.symptom or ""),
+                        "status": str(rec.status or ""),
+                        "hypothesis": hyp,
+                        "feedback": fb_info,
+                        "approval": ap_info,
+                        "created_at": rec.created_at,
+                    }
+                )
+            return candidates
+    except Exception as exc:  # noqa: BLE001
+        logger.debug(f"Failed to load memory candidates: {exc}")
+        return []
+
+
+def list_labeled_incidents_for_scoring() -> list[dict[str, Any]]:
+    """Returns incidents paired with their latest human feedback for live evaluation."""
+    with SessionLocal() as db:
+        fb_rows = (
+            db.query(IncidentFeedbackRecord)
+            .order_by(IncidentFeedbackRecord.created_at.desc())
+            .all()
+        )
+        latest_fb: dict[str, dict[str, Any]] = {}
+        for fb in fb_rows:
+            inc_key = str(fb.incident_id)
+            if inc_key not in latest_fb:
+                latest_fb[inc_key] = _feedback_to_dict(fb)
+        if not latest_fb:
+            return []
+
+        records = (
+            db.query(IncidentRecord)
+            .filter(IncidentRecord.id.in_(list(latest_fb.keys())))
+            .order_by(IncidentRecord.created_at.desc())
+            .all()
+        )
+        out: list[dict[str, Any]] = []
+        for rec in records:
+            item = rec.to_dict()
+            item["feedback"] = latest_fb[str(rec.id)]
+            out.append(item)
+        return out

@@ -7,6 +7,7 @@ from incidentiq.agents.nodes import (
     human_approval_node,
     input_guard_node,
     logs_agent_node,
+    memory_agent_node,
     metrics_agent_node,
     output_guard_node,
     report_node,
@@ -38,7 +39,7 @@ def check_budget_exceeded(state: IncidentState) -> bool:
     """Checks whether current incident has exhausted step or cost allocations."""
     steps = state.get("steps", 0)
     cost_usd = state.get("cost_usd", 0.0)
-    return bool(
+    return (
         steps >= get_max_agent_steps() or cost_usd >= get_incident_budget_usd()
     )
 
@@ -74,7 +75,8 @@ def route_after_output_guard(state: IncidentState) -> str:
 
 def build_incident_graph() -> StateGraph:
     """Builds the LangGraph multi-agent orchestration state machine."""
-    workflow = StateGraph(IncidentState)
+    # LangGraph's StateLike bound checks TypedDictLike(__required_keys__) which Pyrefly does not synthesize on TypedDict types
+    workflow = StateGraph(IncidentState)  # pyrefly: ignore[bad-specialization]
 
     # 1. Add all functional agent & guard nodes
     workflow.add_node("input_guard", input_guard_node)
@@ -82,6 +84,7 @@ def build_incident_graph() -> StateGraph:
     workflow.add_node("metrics_agent", metrics_agent_node)
     workflow.add_node("logs_agent", logs_agent_node)
     workflow.add_node("runbook_agent", runbook_agent_node)
+    workflow.add_node("memory_agent", memory_agent_node)
     workflow.add_node("root_cause_agent", root_cause_agent_node)
     workflow.add_node("output_guard", output_guard_node)
     workflow.add_node("budget_exceeded", budget_exceeded_node)
@@ -92,17 +95,19 @@ def build_incident_graph() -> StateGraph:
     workflow.add_edge(START, "input_guard")
     workflow.add_edge("input_guard", "supervisor")
 
-    # 3. Dynamic Parallel Fan-Out: Supervisor plan directly drives specialist dispatch
+    # 3. Dynamic Parallel Fan-Out: Supervisor plan + parallel episodic memory recall
     workflow.add_conditional_edges(
         "supervisor",
         route_specialist_fanout,
         ["metrics_agent", "logs_agent", "runbook_agent"],
     )
+    workflow.add_edge("supervisor", "memory_agent")
 
-    # 4. Parallel Fan-In: All three specialists merge evidence into Root-Cause Agent
+    # 4. Parallel Fan-In: All specialists merge evidence into Root-Cause Agent
     workflow.add_edge("metrics_agent", "root_cause_agent")
     workflow.add_edge("logs_agent", "root_cause_agent")
     workflow.add_edge("runbook_agent", "root_cause_agent")
+    workflow.add_edge("memory_agent", "root_cause_agent")
 
     # 5. Root Cause -> Output Guard -> Conditional Routing
     workflow.add_edge("root_cause_agent", "output_guard")

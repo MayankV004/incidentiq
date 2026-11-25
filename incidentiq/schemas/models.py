@@ -12,7 +12,7 @@ class Alert(BaseModel):
 
 class Evidence(BaseModel):
     id: str  # e.g. "ev_metric_001", "ev_log_004", "ev_rb_002"
-    kind: Literal["metric", "log", "runbook", "postmortem"]
+    kind: Literal["metric", "log", "runbook", "postmortem", "memory"]
     summary: str
     source_ref: str  # tool call id or kb chunk id
     data: dict | None = None

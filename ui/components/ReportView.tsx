@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { CheckCircle2, ShieldCheck } from "lucide-react";
-import { Evidence, Hypothesis, IncidentDetail, IncidentStatus } from "../types/api";
+import { Evidence, FeedbackVerdict, Hypothesis, IncidentDetail, IncidentStatus } from "../types/api";
 
 interface ReportViewProps {
   incident: IncidentDetail | null;
@@ -12,6 +12,7 @@ interface ReportViewProps {
   onSelectEvidence: (ev: Evidence) => void;
   onRequestApproval: () => void;
   onReject: () => void;
+  onSubmitFeedback?: (verdict: FeedbackVerdict, correctedCategory?: string) => Promise<void>;
   remediationResult?: Record<string, unknown>;
 }
 
@@ -23,8 +24,10 @@ export function ReportView({
   onSelectEvidence,
   onRequestApproval,
   onReject,
+  onSubmitFeedback,
 }: ReportViewProps) {
   const [activeTab, setActiveTab] = useState<"report" | "evidence" | "trace">("report");
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
 
   if (!hypothesis && (!evidenceList || evidenceList.length === 0)) {
     return null;
@@ -176,6 +179,54 @@ export function ReportView({
                   Action rejected by engineer. Incident marked resolved.
                 </div>
               )}
+            </div>
+          )}
+
+          {onSubmitFeedback && incident?.incident_id && (
+            <div className="pt-4 border-t border-zinc-200/60 dark:border-zinc-800/60 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
+              <span className="text-zinc-500">
+                {incident.feedback
+                  ? `Verified outcome: ${incident.feedback.verdict}`
+                  : "Verify outcome (feeds episodic memory & live evals):"}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  disabled={isSubmittingFeedback}
+                  onClick={async () => {
+                    setIsSubmittingFeedback(true);
+                    try {
+                      await onSubmitFeedback("correct_root_cause");
+                    } finally {
+                      setIsSubmittingFeedback(false);
+                    }
+                  }}
+                  className={`px-3 py-1.5 rounded-lg border transition-colors cursor-pointer disabled:opacity-50 ${
+                    incident.feedback?.verdict === "correct_root_cause"
+                      ? "bg-lime-400/15 border-lime-500/40 text-lime-700 dark:text-lime-400 font-semibold"
+                      : "border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300"
+                  }`}
+                >
+                  Correct diagnosis
+                </button>
+                <button
+                  disabled={isSubmittingFeedback}
+                  onClick={async () => {
+                    setIsSubmittingFeedback(true);
+                    try {
+                      await onSubmitFeedback("wrong_root_cause");
+                    } finally {
+                      setIsSubmittingFeedback(false);
+                    }
+                  }}
+                  className={`px-3 py-1.5 rounded-lg border transition-colors cursor-pointer disabled:opacity-50 ${
+                    incident.feedback?.verdict === "wrong_root_cause"
+                      ? "bg-red-500/15 border-red-500/40 text-red-700 dark:text-red-400 font-semibold"
+                      : "border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300"
+                  }`}
+                >
+                  Wrong diagnosis
+                </button>
+              </div>
             </div>
           )}
         </div>

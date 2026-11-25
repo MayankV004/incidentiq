@@ -6,6 +6,66 @@ import re
 from incidentiq.schemas.models import KBChunk
 
 
+def tokenize_lexical(text: str) -> list[str]:
+    """Tokenizes text into lowercase alphanumeric words for BM25/Jaccard scoring."""
+    return re.findall(r"\w+", text.lower())
+
+
+def score_lexical_texts(
+    query: str,
+    documents: list[tuple[str, str]],
+    target_service: str = "",
+    service_weight: float = 2.5,
+) -> list[float]:
+    """Computes combined Okapi BM25 + Jaccard + service boost scores for (service, text) docs."""
+    if not documents:
+        return []
+
+    doc_token_list = [tokenize_lexical(doc_text) for _, doc_text in documents]
+    avg_dl = (
+        sum(len(d) for d in doc_token_list) / len(doc_token_list)
+        if doc_token_list
+        else 1.0
+    )
+
+    idf: dict[str, float] = {}
+    n_docs = len(documents)
+    query_terms = set(tokenize_lexical(query))
+    query_tokens = tokenize_lexical(query)
+    for term in query_terms:
+        n_containing = sum(1 for doc in doc_token_list if term in doc)
+        if n_containing > 0:
+            idf[term] = math.log(
+                (n_docs - n_containing + 0.5) / (n_containing + 0.5) + 1.0
+            )
+
+    k1 = 1.5
+    b = 0.75
+    scores: list[float] = []
+    for idx, (doc_service, _) in enumerate(documents):
+        doc_tokens = doc_token_list[idx]
+        doc_len = len(doc_tokens)
+        bm25 = 0.0
+        for q in query_tokens:
+            if q not in idf:
+                continue
+            freq = doc_tokens.count(q)
+            numerator = freq * (k1 + 1)
+            denominator = freq + k1 * (1 - b + b * (doc_len / (avg_dl or 1)))
+            bm25 += idf[q] * (numerator / (denominator or 1))
+
+        service_boost = (
+            service_weight
+            if target_service and doc_service.lower() == target_service.lower()
+            else 0.0
+        )
+        q_set = set(query_tokens)
+        c_set = set(doc_tokens)
+        jaccard = len(q_set & c_set) / (len(q_set | c_set) or 1)
+        scores.append((bm25 * 0.6) + (jaccard * 15.0) + service_boost)
+    return scores
+
+
 class HybridRAGEngine:
     """Lexical RAG Retrieval Engine combining Okapi BM25 ranking, token-level
     Jaccard overlap, and service metadata boosting for operational runbooks and postmortems.
@@ -62,70 +122,14 @@ class HybridRAGEngine:
                     )
                 )
 
-    def _bm25_tokenize(self, text: str) -> list[str]:
-        return re.findall(r"\w+", text.lower())
-
-    def _compute_bm25_score(
-        self, query: str, doc_tokens: list[str], avg_dl: float, idf: dict[str, float]
-    ) -> float:
-        query_tokens = self._bm25_tokenize(query)
-        doc_len = len(doc_tokens)
-        score = 0.0
-        k1 = 1.5
-        b = 0.75
-
-        for q in query_tokens:
-            if q not in idf:
-                continue
-            freq = doc_tokens.count(q)
-            numerator = freq * (k1 + 1)
-            denominator = freq + k1 * (1 - b + b * (doc_len / (avg_dl or 1)))
-            score += idf[q] * (numerator / (denominator or 1))
-        return score
-
     def retrieve(self, query: str, service: str = "", top_k: int = 3) -> list[KBChunk]:
         """Retrieves top-k relevant knowledge chunks using Okapi BM25 scoring with Jaccard lexical overlap and service boosting."""
         if not self.chunks:
             return []
 
-        # 1. Prepare BM25 index
-        doc_token_list = [self._bm25_tokenize(chunk.content) for chunk in self.chunks]
-        avg_dl = (
-            sum(len(d) for d in doc_token_list) / len(doc_token_list)
-            if doc_token_list
-            else 1.0
-        )
-
-        # Calculate IDF
-        idf: dict[str, float] = {}
-        n_docs = len(self.chunks)
-        query_terms = set(self._bm25_tokenize(query))
-        for term in query_terms:
-            n_containing = sum(1 for doc in doc_token_list if term in doc)
-            if n_containing > 0:
-                idf[term] = math.log(
-                    (n_docs - n_containing + 0.5) / (n_containing + 0.5) + 1.0
-                )
-
-        # 2. Score candidates
-        candidate_scores: list[tuple[float, KBChunk]] = []
-        for idx, chunk in enumerate(self.chunks):
-            # Keyword/BM25 score
-            bm25 = self._compute_bm25_score(query, doc_token_list[idx], avg_dl, idf)
-
-            # Service boost
-            service_boost = (
-                2.5 if service and (chunk.service.lower() == service.lower()) else 0.0
-            )
-
-            # Semantic lexical overlap
-            q_set = set(self._bm25_tokenize(query))
-            c_set = set(doc_token_list[idx])
-            jaccard = len(q_set & c_set) / (len(q_set | c_set) or 1)
-
-            # Combined hybrid score
-            combined_score = (bm25 * 0.6) + (jaccard * 15.0) + service_boost
-            candidate_scores.append((combined_score, chunk))
+        docs = [(chunk.service, chunk.content) for chunk in self.chunks]
+        scores = score_lexical_texts(query=query, documents=docs, target_service=service)
+        candidate_scores = list(zip(scores, self.chunks, strict=True))
 
         # 3. Rerank and pick top K
         candidate_scores.sort(key=lambda x: x[0], reverse=True)

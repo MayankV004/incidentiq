@@ -15,6 +15,7 @@ def test_additive_models_registered_in_metadata():
         "approvals",
         "eval_runs",
         "eval_results",
+        "incident_feedback",
     }
     assert required_tables.issubset(table_names)
 
@@ -32,6 +33,7 @@ def test_init_db_creates_all_tables():
         "approvals",
         "eval_runs",
         "eval_results",
+        "incident_feedback",
     }
     assert required_tables.issubset(existing_tables)
 

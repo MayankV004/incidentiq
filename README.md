@@ -30,10 +30,12 @@ flowchart TD
   Supervisor --> MetricsAgent[3a. Metrics Agent -> Metrics MCP]
   Supervisor --> LogsAgent[3b. Logs Agent -> Logs MCP]
   Supervisor --> RunbookAgent[3c. Runbook Agent -> BM25 Knowledge Search]
+  Supervisor --> MemoryAgent[3d. Memory Agent -> Verified SQLite Episodes]
 
   MetricsAgent --> RootCause[4. Root-Cause Agent: LLM or Rule Fallback]
   LogsAgent --> RootCause
   RunbookAgent --> RootCause
+  MemoryAgent --> RootCause
 
   RootCause --> OutputGuard[5. Output Guardrail: Check Citations and Confidence]
   OutputGuard -->|Healthy or Weak Evidence| Abstain[6a. Honest Abstention]
@@ -54,7 +56,8 @@ flowchart TD
    * The **Metrics Agent** queries `mcp_servers/metrics` (`PROMETHEUS_URL` in live mode, or `scenarios/` files in replay mode) and checks Z-score spikes.
    * The **Logs Agent** queries `mcp_servers/logs` for grouped error patterns and wraps log lines in `<untrusted_data>` tags.
    * The **Runbook Agent** searches markdown files in `knowledge/` using in-memory keyword scoring (**BM25** and Jaccard overlap).
-5. **Synthesize a report:** The Root-Cause Agent sends gathered evidence to your configured LLM via LiteLLM. If no LLM key is set, a built-in rule engine runs instead.
+   * The **Memory Agent** searches human-verified past incidents in SQLite (`ev_mem_*`) using BM25 + Jaccard and scans recalled text for injections.
+5. **Synthesize a report:** The Root-Cause Agent sends gathered evidence to your configured LLM via LiteLLM. If no LLM key is set, a built-in rule engine runs instead. Live metric or log anomalies are still required before diagnosis.
 6. **Verify claims:** The output guardrail drops unknown citations. It forces **abstention** if confidence falls below `ABSTAIN_THRESHOLD` (`0.50`) or groundedness falls below `GROUND_THRESHOLD` (`0.85`).
 7. **Wait for human approval:** When the agent suggests an action (`review_config`, `restart_service`, `rollback_deploy`, or `scale_up`), it pauses. You then approve or reject it in the UI.
 8. **Run dry-run receipt:** When you click Approve, the server checks a single-use **HMAC** capability token and returns a dry-run receipt. No real infrastructure changes.
@@ -147,6 +150,7 @@ flowchart TD
 | `DATA_MODE` | `replay` (in MCP/API; `live` in `.env.example`) | No | `replay` reads `scenarios/`; `live` queries `PROMETHEUS_URL` and `logs/` |
 | `PROMETHEUS_URL` | `http://localhost:9090` | No | Prometheus base URL when `DATA_MODE=live` |
 | `MCP_MODE` | in-process (`""`) | No | Set to `http` in Compose to call MCP containers on ports `9101–9103` |
+| `ENABLE_AGENT_MEMORY` | `true` | No | Recall verified past incidents from SQLite during investigation |
 | `DAILY_COST_CAP_USD` | `2.00` | No | Daily USD limit summed from SQLite across restarts |
 | `INCIDENT_BUDGET_USD` | `0.05` | No | Per-incident USD cost limit |
 | `MAX_AGENT_STEPS` | `12` | No | Max LangGraph steps per incident |
