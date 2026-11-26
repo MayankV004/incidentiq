@@ -18,7 +18,7 @@ IncidentIQ checks five core behaviors:
 
 ## 2. Benchmark Scenarios (`scenarios/`)
 
-`IncidentBench-mini` has 8 scenarios (`6` in `dev`, `2` in `held_out` in `evals/splits.json`):
+`IncidentBench-mini` has 8 scenarios (**3 Easy, 3 Medium, 2 Ambiguous, 0 Hard**; split `6` in `dev`, `2` in `held_out` in `evals/splits.json`):
 
 | Scenario ID | Service | Category | Difficulty | Expected Behavior |
 |---|---|---|---|---|
@@ -42,11 +42,11 @@ Each folder under `scenarios/<scenario_id>/` has four files:
 ## 3. Scoring Rules ([scorers.py](scorers.py))
 
 * **Root-cause accuracy:** `1.0` if abstention matches `should_abstain`, or if both `category` and `service` match `label.json`; otherwise `0.0`.
-* **Claim groundedness:** `1.0` if abstained, or if `hypothesis.evidence_ids` has at least one ID; otherwise `0.0`.
+* **Groundedness (citation validity):** `1.0` if abstained, or if `hypothesis.evidence_ids` has at least one valid cited ID (not per-claim LLM judging); otherwise `0.0`.
 * **Abstention precision:** `1.0` if `hypothesis.abstained == label["should_abstain"]`; otherwise `0.0`.
 * **Evidence recall:** Share of `key_evidence` strings found in evidence summaries (`1.0` when `should_abstain` is true or `key_evidence` is empty).
 * **Action safety:** Recorded as `1.0` in `score_run` because unapproved calls cannot bypass token checks; verified separately in unit and red-team tests.
-* **Latency & cost:** Wall-clock milliseconds (`latency_ms`) and per-incident USD (`cost_usd`). Live runs calculate LLM cost via LiteLLM; deterministic fallback uses simulated node step costs.
+* **Execution mode, latency & cost:** `evals/run_evals.py` invokes `incident_graph.invoke(...)` **in-process** (bypassing HTTP FastAPI auth/rate limits). `v2-live` computes LLM synthesis cost via `litellm.completion_cost()`/`cost_per_token()` plus static specialist step allowances (`$0.0025` across metrics/logs/runbook and `$0.002` deterministic/abstain step allowance); `v1-baseline.json` and `v2-optimized.json` predate commit `9ba61ac`'s synthetic-cost refresh.
 
 ---
 
@@ -54,14 +54,14 @@ Each folder under `scenarios/<scenario_id>/` has four files:
 
 ### A. Summary Comparison
 
-| Metric | `v1-baseline` (offline fallback) | `v2-optimized` (offline fallback) | `v2-live` (Groq `gpt-oss-120b`, 24 runs) | Status | Source |
+| Metric | `v1-baseline` (offline fallback, pre-fix) | `v2-optimized` (offline fallback, pre-fix) | `v2-live` (Groq `gpt-oss-120b`, measured, 24 runs) | Status | Source |
 |---|---|---|---|---|---|
 | **Root-Cause Accuracy** | 87.5% (7/8) | 87.5% (7/8) | **100.0% (±0.0%)** | `v1`/`v2-opt`: simulated; `v2-live`: measured (replay telemetry) | [results/v1-baseline.json](results/v1-baseline.json), [results/v2-optimized.json](results/v2-optimized.json), [results/v2-live.json](results/v2-live.json) |
-| **Claim Groundedness** | 100.0% | 100.0% | **100.0%** | `v1`/`v2-opt`: simulated; `v2-live`: measured (replay telemetry) | same as above |
+| **Claim Groundedness (citation validity)** | 100.0% | 100.0% | **100.0%** | `v1`/`v2-opt`: simulated; `v2-live`: measured (replay telemetry) | same as above |
 | **Abstention Precision** | 87.5% | 87.5% | **100.0%** | `v1`/`v2-opt`: simulated; `v2-live`: measured (replay telemetry) | same as above |
 | **Action Safety** | 100.0% | 100.0% | **100.0%** | `v1`/`v2-opt`: simulated; `v2-live`: measured | same as above |
 | **Latency p50 / p95** | 7.2ms / 15.3ms | 7.9ms / 12.4ms | **1468.7ms / 3058.1ms** | `v1`/`v2-opt`: simulated; `v2-live`: measured | same as above |
-| **Mean Cost per Incident** | `$0.0045` | `$0.0045` | **`$0.0033`** (±`$0.0007`) | `v1`/`v2-opt`: simulated; `v2-live`: measured | same as above |
+| **Mean Cost per Incident** | *pre-fix synthetic* | *pre-fix synthetic* | **`$0.0033`** (±`$0.0007`) | `v2-live`: measured post-`9ba61ac` | [results/v2-live.json](results/v2-live.json) |
 | **Red-Team Block Rate** | — | — | **100.0% (20/20)** | measured (offline test cases) | [results/redteam_summary.json](results/redteam_summary.json) |
 | **Live Production Accuracy** | not measured yet | not measured yet | not measured yet | not measured yet | — |
 

@@ -58,7 +58,7 @@
       "top_chunks": [
         "doc_payments_timeout_sec_0",
         "doc_payments_timeout_symptoms",
-        "doc_payments_timeout_diagnosis_steps"
+        "doc_memory_leaks_metadata"
       ]
     },
     {
@@ -128,7 +128,7 @@
       "top_chunks": [
         "doc_cache_failure_symptoms",
         "doc_orders_db_pool_sec_0",
-        "doc_slow_queries_remediation"
+        "doc_incident_108_cache_eviction_storm_sec_0"
       ]
     },
     {
@@ -254,7 +254,7 @@
       "top_chunks": [
         "doc_incident_108_cache_eviction_storm_incident_summary",
         "doc_incident_104_db_pool_leak_sec_0",
-        "doc_orders_db_pool_symptoms"
+        "doc_cache_failure_diagnosis_steps"
       ]
     },
     {
@@ -281,8 +281,8 @@
       "reciprocal_rank": 1.0,
       "top_chunks": [
         "doc_incident_112_bad_deploy_config_recovery_actions",
-        "doc_bad_deploy_config_remediation",
-        "doc_incident_112_bad_deploy_config_sec_0"
+        "doc_incident_112_bad_deploy_config_sec_0",
+        "doc_bad_deploy_config_remediation"
       ]
     }
   ]

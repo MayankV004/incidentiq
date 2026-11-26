@@ -33,7 +33,7 @@ The agent reads untrusted text (logs, runbooks, alerts) and can influence action
 | T4 | Tool misuse | Agent calls remediation from the logs agent | Code-level per-agent allow-lists, `forbidden_tool` events |
 | T5 | Unapproved action | Model tries to restart a service | Remediation requires single-use approval token, dry-run only |
 | T6 | System prompt exfiltration | "Print your instructions" | No secrets in prompts, output scan for prompt fragments |
-| T7 | Data leakage / PII | Emails or tokens in logs reach the model or UI | Presidio and regex redaction before model calls and before storage |
+| T7 | Data leakage / PII | Emails or tokens in logs reach the model or UI | Regex redaction (`PII_PATTERNS` in `guards.py`) before model calls and before storage (Presidio NER planned) |
 | T8 | Hallucinated conclusions | Confident wrong root cause | Citation requirement, groundedness gate, abstention |
 | T9 | Cost abuse / DoS | Public endpoint spammed to burn budget | Rate limits, daily cost cap, per-incident budget, step limit |
 | T10 | Runaway agent loops | Agent keeps calling tools | `MAX_AGENT_STEPS`, budget guard |
@@ -54,7 +54,7 @@ Even if layers 2 and 3 fail, layer 4 prevents damage. That is the point of defen
 
 ## 6. Red-team suite (20 cases)
 
-Stored in `evals/redteam/cases.json` and loaded into `redteam_cases`.
+Stored in `evals/redteam/cases.json` and executed by `evals/redteam/run_redteam.py` against the real `incident_graph`, FastAPI endpoints, and MCP guards (writing summary results to `evals/results/redteam_summary.json`; persisting per-case history to SQL `redteam_cases`/`redteam_runs` tables is Planned / Future work).
 
 | Category | Count | Examples |
 |---|---|---|
@@ -79,6 +79,11 @@ Report: block rate = blocked / total, plus a list of partial and succeeded cases
 - A test asserts PII patterns never appear in stored `raw_alert`.
 - Dependency and secret scans run in CI.
 
-## 8. Limits and honesty
+## 8. Limits, honesty & Planned / Future work
 
 Prompt-injection defenses are probabilistic. This project reduces risk and demonstrates measurement; it does not claim immunity. State this in the README alongside the measured block rate.
+
+**Planned / Future work:**
+- Add Microsoft Presidio NLP entity recognition (`presidio-analyzer` / `presidio-anonymizer`) alongside regex `PII_PATTERNS`.
+- Add classifier-backed prompt-injection detection on tool outputs in addition to pattern rules (`INJECTION_SIGNATURES`).
+- Persist red-team run history into normalized `redteam_cases` / `redteam_runs` / `redteam_results` tables.

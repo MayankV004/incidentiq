@@ -13,7 +13,7 @@ When production breaks, engineers waste time opening dashboards, searching logs,
 IncidentIQ automates that first investigation step.
 
 What makes it different from a plain chatbot:
-* **Cited answers only:** A guardrail removes claims without an evidence ID (`ev_metric_*`, `ev_log_*`, or `ev_kb_*`).
+* **Cited answers only:** A guardrail removes claims without an evidence ID (`ev_metric_*`, `ev_log_*`, `ev_kb_*`, or `ev_mem_*`).
 * **Honest abstention:** If telemetry looks normal or evidence is weak, the assistant stops and says so.
 * **No silent production changes:** Remediation tools require a signed approval token and only return dry-run receipts.
 * **Works offline too:** If you do not configure an LLM API key, a rule-based fallback handles demo scenarios.
@@ -57,9 +57,9 @@ flowchart TD
    * The **Logs Agent** queries `mcp_servers/logs` for grouped error patterns and wraps log lines in `<untrusted_data>` tags.
    * The **Runbook Agent** searches markdown files in `knowledge/` using in-memory keyword scoring (**BM25** and Jaccard overlap).
    * The **Memory Agent** searches human-verified past incidents in SQLite (`ev_mem_*`) using BM25 + Jaccard and scans recalled text for injections.
-5. **Synthesize a report:** The Root-Cause Agent sends gathered evidence to your configured LLM via LiteLLM. If no LLM key is set, a built-in rule engine runs instead. Live metric or log anomalies are still required before diagnosis.
-6. **Verify claims:** The output guardrail drops unknown citations. It forces **abstention** if confidence falls below `ABSTAIN_THRESHOLD` (`0.50`) or groundedness falls below `GROUND_THRESHOLD` (`0.85`).
-7. **Wait for human approval:** When the agent suggests an action (`review_config`, `restart_service`, `rollback_deploy`, or `scale_up`), it pauses. You then approve or reject it in the UI.
+5. **Synthesize a report:** The Root-Cause Agent sends gathered evidence to your configured LLM via LiteLLM. If no LLM key is set, a built-in rule engine runs instead. When no metric or log anomalies exist, it abstains automatically (`confidence = 0.20`).
+6. **Verify claims:** The output guardrail checks citation ID validity against gathered state (`evidence_ids`) and drops unknown citations (not per-claim LLM judging). It forces **abstention** if valid citations are empty, groundedness `< GROUND_THRESHOLD` (`0.85`), or confidence `< ABSTAIN_THRESHOLD` (`0.50`).
+7. **Wait for human approval:** When the agent suggests an action (`review_config`, `restart_service`, `rollback_deploy`, or `scale_up`), approval state and `awaiting_approval` are persisted in SQLite (no LangGraph checkpointer or `interrupt()`). You then approve or reject it in the UI.
 8. **Run dry-run receipt:** When you click Approve, the server checks a single-use **HMAC** capability token and returns a dry-run receipt. No real infrastructure changes.
 
 ### UI Screenshots
@@ -186,6 +186,11 @@ Replay scenarios are 8 synthetic outage files in `scenarios/`, not real producti
 
 See [`evals/README.md`](evals/README.md) for the per-scenario breakdown and formulas.
 
+> **Benchmark & Cost Notes:**
+> * `evals/run_evals.py` invokes `incident_graph.invoke(...)` **in-process** (bypassing HTTP FastAPI auth and rate limits).
+> * `IncidentBench-mini` currently contains **3 easy, 3 medium, and 2 ambiguous** scenarios (no `hard` scenario exists yet).
+> * `v2-optimized.json` was generated prior to commit `9ba61ac`'s synthetic-cost refresh; only `v2-live.json` (`$0.0033` mean) reflects post-`9ba61ac` `litellm.completion_cost()` / `cost_per_token()` token accounting plus specialist step allowances.
+
 ---
 
 ## 5. Safety and Limits
@@ -194,8 +199,8 @@ Read these limits before deploying or sharing access to IncidentIQ:
 
 * **Remediation is dry-run only:** Tools in `mcp_servers/remediation/server.py` return `[DRY RUN]` JSON receipts and make zero changes to containers or configs.
 * **No user accounts:** Only `API_KEY`, per-IP rate limits (`5` creates/min, `30` reads/min), and cost caps (`DAILY_COST_CAP_USD`, `INCIDENT_BUDGET_USD`) control access. Approver names are not authenticated (`decided_by` defaults to `"on_call_engineer"` in SQLite).
-* **Single-worker SQLite demo:** Both local dev and `deploy/docker-compose.yml` run one Uvicorn worker (`WORKERS=1`) with SQLite (`sqlite:///incidentiq.db` locally, `/data/incidentiq.db` in Compose), fronted by Caddy in Compose. Postgres drivers are installed in `pyproject.toml`, and Redis is not used at runtime.
-* **Simulated demo services and faults:** The `shop/` microservices are a small test app. Their order store and cache use in-memory Python dicts, not real Postgres or Redis servers.
+* **Single-worker SQLite demo:** Both local dev and `deploy/docker-compose.yml` run one Uvicorn worker (`WORKERS=1`) with SQLite (`sqlite:///incidentiq.db` locally, `/data/incidentiq.db` in Compose), fronted by Caddy in Compose. Only `shop/` exposes Prometheus `/metrics` (via optional `deploy/docker-compose.monitoring.yml`); API `iiq_*` `/metrics` and Grafana are planned future work.
+* **Simulated demo services and limited CLI fault injection:** The `shop/` microservices are a small test app whose order store and cache use in-memory Python dicts (`ORDERS_DB`, `ORDERS_CACHE`). `faults/injector.py` supports live injection for `db_pool`, `slow_query`, and `dependency_timeout` (+ `reset`), while the other fault types exist as recorded replay scenarios.
 * **Keyword retrieval only:** `incidentiq/rag/engine.py` uses Okapi BM25 plus Jaccard token overlap and a fixed service title boost (`+2.5`). It uses no embeddings or vector database.
 * **Small benchmark:** `IncidentBench-mini` has only 8 curated scenarios (`6` dev, `2` held-out) across one demo app.
 * **Guardrails are not guarantees:** Input and output checks rely on regex patterns, `<untrusted_data>` delimiters, tool allowlists, and single-use HMAC tokens. They reduce prompt-injection risk, but cannot guarantee safety against all attacks.

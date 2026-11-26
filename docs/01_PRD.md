@@ -53,20 +53,20 @@ On-call engineers lose time during incidents by manually correlating metrics, lo
 
 | ID | Requirement |
 |---|---|
-| FR-1 | Accept alerts via REST (`POST /v1/incidents`) |
-| FR-2 | Redact PII and scan for injection before any model call |
-| FR-3 | Supervisor selects and runs metrics, logs and runbook agents in parallel |
-| FR-4 | Agents access data only through MCP tools with per-agent allow-lists |
-| FR-5 | Hybrid RAG with reranking over runbooks and postmortems, with citations |
+| FR-1 | Accept alerts via REST (`POST /v1/incidents`) with `scenario_id` / `DATA_MODE` replay or live support |
+| FR-2 | Redact PII (regex patterns) and scan for injection before storage or model calls |
+| FR-3 | Deterministic supervisor fans out to metrics, logs, and runbook agents in parallel alongside `memory_agent` |
+| FR-4 | Agents access data only through MCP tools with per-agent allow-lists enforced in code |
+| FR-5 | Lexical BM25 + Jaccard RAG over runbooks and postmortems, with citations (hybrid vector + rerank planned) |
 | FR-6 | Root-cause agent returns category, service, confidence, reasoning and evidence ids |
-| FR-7 | Output guard verifies groundedness; unsupported claims are removed or trigger abstention |
+| FR-7 | Output guard verifies groundedness and prompt/secret leakage; unsupported claims trigger abstention |
 | FR-8 | Remediation is dry-run only and requires explicit human approval |
-| FR-9 | Stream progress events to the UI (SSE) |
+| FR-9 | Stream progress events to the UI (`GET /v1/incidents/{id}/stream` SSE) |
 | FR-10 | Record tokens, cost and latency per LLM call and per incident |
-| FR-11 | Eval harness runs all scenarios in replay mode and stores versioned results |
-| FR-12 | CI fails if accuracy or groundedness regress below thresholds |
-| FR-13 | Red-team suite of 20 attacks with stored outcomes |
-| FR-14 | Per-incident budget cap stops runaway loops |
+| FR-11 | Eval harness runs all 8 curated scenarios in replay mode (`evals/run_evals.py`) and stores versioned results |
+| FR-12 | CI (`ci.yml`) fails if accuracy, groundedness, abstention, action safety, or cost regress past `evals/thresholds.json` |
+| FR-13 | Red-team suite of 20 attacks (`evals/redteam/cases.json`) executed via `evals/redteam/run_redteam.py` |
+| FR-14 | Per-incident budget/step cap (`INCIDENT_BUDGET_USD`, `MAX_AGENT_STEPS`) and daily spend cap (`DAILY_COST_CAP_USD`) stop runaway loops |
 
 ## 5.2 Non-functional requirements
 
@@ -85,9 +85,9 @@ Targets are goals, not promises. Report what you actually measure.
 
 ## 6. Scope
 
-**In scope (v1):** demo shop, six fault types (about 30 scenarios), three MCP servers, hybrid RAG, LangGraph agents, guardrails, eval harness, tracing, four UI pages, Docker deployment.
+**In scope (implemented v1 demo):** demo shop (4 services with in-memory dicts), six fault categories across 8 curated scenarios (`IncidentBench-mini`), three FastMCP HTTP/in-process servers, lexical BM25 + Jaccard RAG with SQLite episodic memory, LangGraph agents, regex PII/injection/groundedness guardrails, eval harness + 20-case red-team runner, optional Langfuse tracing & Prometheus monitoring overlay, 6 Next.js UI App Router pages (+ BFF proxy), Docker Compose + Caddy deployment.
 
-**Out of scope (v1):** real cloud provider integrations, Slack or PagerDuty connectors, autonomous remediation, fine-tuning, multi-user auth.
+**Planned / Future work (beyond v1 demo):** expansion from 8 to 30+ scenarios, PostgreSQL + `pgvector` + `tsvector` + cross-encoder reranker, Redis caching, Microsoft Presidio NLP PII detection, Grafana dashboards and API `/metrics`, interactive UI attack/fault runners, real cloud provider integrations, Slack or PagerDuty connectors, autonomous remediation (after separate security review), fine-tuning, multi-user auth.
 
 ## 7. Success metrics
 

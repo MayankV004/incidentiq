@@ -30,7 +30,7 @@ Current `evals/splits.json` split across the 8 existing scenarios:
 | cache_failure | 3 | Redis down vs eviction |
 | ambiguous / no clear cause | 3 to 4 | Correct behavior is abstain |
 
-Difficulty tags: easy (single clear signal), medium (two plausible causes), hard (noisy or overlapping symptoms), ambiguous (should abstain).
+Difficulty tags defined in schema: `easy`, `medium`, `hard`, `ambiguous`. The current 8 scenarios (`001`–`008`) comprise **3 `easy`, 3 `medium`, and 2 `ambiguous`** (no `hard` scenario exists yet).
 
 Each scenario folder contains `metrics.json`, `logs.jsonl`, `alert.json`, `label.json`:
 
@@ -46,43 +46,42 @@ Each scenario folder contains `metrics.json`, `logs.jsonl`, `alert.json`, `label
 }
 ```
 
-Split: use 20 scenarios for development and prompt tuning, hold out 10 for the final reported numbers to avoid overfitting your prompts to the benchmark.
+Split: in the current 8-scenario benchmark (`evals/splits.json`), 6 are in `dev` and 2 in `held_out`. (Expansion to 30 scenarios split 20 dev / 10 held-out, including `hard` difficulty cases, is Planned / Future work.)
 
-## 3. Metrics
+## 3. Metrics (`evals/scorers.py`)
 
 | Metric | Definition | How computed |
 |---|---|---|
-| Root-cause accuracy | category AND service match label | exact match |
-| Evidence recall | fraction of `key_evidence` items present in cited evidence | string or semantic match, judged |
-| Groundedness | fraction of claims supported by cited evidence | LLM judge or RAGAS faithfulness |
-| Tool-use correctness | required tools called, no forbidden or redundant calls | rule checks on `tool_calls` |
-| Abstention quality | abstains iff `should_abstain` | precision and recall of abstention |
-| Action safety | zero actions executed without approval | assertion, must be 100% |
-| Cost per incident | sum of `llm_calls.cost_usd` | from DB |
-| Latency | p50 and p95 end to end | from DB |
-| Retrieval hit@3 and MRR | correct runbook in top results | separate retrieval test |
-| Injection block rate | red-team outcomes | see security doc |
+| Root-cause accuracy | category AND service match label (or abstains iff `should_abstain`) | exact match |
+| Evidence recall | fraction of `key_evidence` items present in cited evidence | case-insensitive substring match in `evals/scorers.py` |
+| Groundedness (citation validity) | cited `evidence_ids` non-empty for diagnosis (or abstained) | citation presence/validity check in `evals/scorers.py` + `guards.py` (per-claim LLM judge planned) |
+| Tool-use correctness | required tools called, no forbidden or redundant calls | rule checks on `tool_calls` (in unit/contract tests) |
+| Abstention quality | abstains iff `should_abstain` | `hypothesis.abstained == should_abstain` |
+| Action safety | zero actions executed without approval | assertion (`100%` structurally enforced by HMAC capability tokens) |
+| Cost per incident | sum of `cost_usd` (`litellm.completion_cost()` + node allowances) | aggregated in `evals/run_evals.py` |
+| Latency | p50 and p95 end to end | wall-clock duration in `evals/run_evals.py` |
+| Retrieval hit@3 and MRR | correct runbook in top results | `evals/run_retrieval_eval.py` |
+| Injection block rate | red-team outcomes | `evals/redteam/run_redteam.py` |
 
 ## 4. Methodology
 
-1. **Replay mode only** for evals: MCP servers read frozen scenario data, so results are reproducible.
-2. **3 repeats per scenario**; report mean and standard deviation. A single run of 30 items is too noisy to trust.
-3. **Judge model from a different vendor** than the agent where possible. Spot-check at least 10 judge decisions by hand and record agreement.
-4. **Version everything**: git sha, model names, prompts version, thresholds stored in `eval_runs.config`.
-5. **Baseline first** (Day 9) with the unoptimized system, then optimize, then re-run (Day 11).
-6. **Failure analysis**: for each wrong answer, categorize the cause (retrieval miss, tool misuse, reasoning error, guard too strict) and fix the top two categories.
-7. **Honest reporting**: include failures and limits in the README.
+1. **In-process replay execution:** `evals/run_evals.py` invokes `incident_graph.invoke(...)` **directly in-process** with `DATA_MODE=replay` (note: this bypasses FastAPI HTTP auth and rate limits).
+2. **Configurable repeats (`--repeats`, default `1`, `3` recommended for live LLM variance)**: aggregate mean scores over `8` active scenarios (`6 dev` / `2 held_out`; scaling to `30` scenarios is Planned / Future work).
+3. **Versioned results:** model path (`real_llm_live` vs `deterministic_fallback`), split, repeats, and aggregate metrics are persisted to `eval_runs`/`eval_results` and committed under `evals/results/<name>.json`. Note: `v1-baseline.json` and `v2-optimized.json` were captured prior to commit `9ba61ac`'s synthetic-cost refresh, so only `v2-live.json` carries post-fix token costs.
+4. **Baseline first, then optimize:** record `v1-baseline`, optimize, then re-run (`v2-optimized`, plus `v2-live` for live LLM providers).
+5. **Failure analysis & honest reporting:** inspect wrong predictions (e.g. `003_orders_slow_db_query` in offline fallback) and state benchmark size (`8` scenarios -> indicative checks, not statistically strong proof).
 
-## 5. Experiments to run and report
+## 5. Experiments & Planned / Future work
 
-| Experiment | Comparison |
-|---|---|
-| RAG strategy | vector only vs hybrid vs hybrid + rerank |
-| Model routing | strong model everywhere vs routed small/strong |
-| Prompt trimming | raw logs vs clustered summaries |
-| Caching | on vs off (cost and latency) |
-| Parallelism | sequential vs parallel specialists (latency) |
-| Abstention threshold | 0.4, 0.5, 0.6 (trade-off between wrong answers and over-abstaining) |
+**Implemented comparisons:**
+- **Episodic memory ablation:** `--ablate-memory` (`ENABLE_AGENT_MEMORY=false` vs `true`).
+- **Deterministic offline fallback vs live LLM synthesis (`v2-live`):** measure real model quality, cost, and latency vs rule fallback.
+- **Knowledge retrieval quality:** 20-query BM25 + Jaccard evaluation via `evals/run_retrieval_eval.py`.
+
+**Planned / Future work (not yet implemented in harness):**
+- **Hybrid RAG comparison:** vector only vs `pgvector` + `tsvector` hybrid vs hybrid + cross-encoder rerank.
+- **Cross-vendor LLM judge + RAGAS/DeepEval faithfulness:** evaluate with a separate strong judge model and spot-check 10 decisions manually.
+- **Dedicated sweeps:** strong everywhere vs routed small/strong (`MODEL_SMALL`/`MODEL_STRONG`), raw logs vs clustered summaries, Redis LLM cache on vs off, sequential vs parallel specialists, abstention threshold sweep (`0.4`/`0.5`/`0.6`), and `eval_runs.config` git SHA JSON metadata column.
 
 ## 6. Harness design
 
@@ -108,12 +107,12 @@ Flow: load scenarios, for each (scenario, repeat) create an incident in replay m
 
 ## 7. CI gate
 
-| Workflow | Trigger | Scope | Model |
-|---|---|---|---|
-| `ci.yml` | every PR | lint, unit tests, MCP contract tests, eval subset (8 scenarios, 1 repeat) | cheap model with cached outputs |
-| `eval-full.yml` | manual or nightly | all scenarios, 3 repeats, uploads results artifact | configured models |
+| Workflow | Status | Trigger | Scope | Execution mode |
+|---|---|---|---|---|
+| `.github/workflows/ci.yml` | Implemented | Push / PR to `main`/`master` | `ruff check .`, `mypy .`, `update_readme_results.py --check`, `pytest`, `evals/redteam/run_redteam.py`, `evals/run_evals.py --name ci-eval`, UI `pnpm lint` + `tsc --noEmit` | Offline deterministic replay (`evals/thresholds.json`) |
+| `eval-full.yml` | Planned / Future work | Manual or nightly | All scenarios, 3 repeats, uploads results artifact | Configured live LLM models |
 
-Gate thresholds stored in `evals/thresholds.json` (for example accuracy at least baseline minus tolerance, groundedness at least 0.85). PR fails if any threshold is violated. Prove the gate once by deliberately degrading a prompt and capturing the red build.
+Gate thresholds stored in `evals/thresholds.json` (`min_accuracy_pct`, `min_groundedness_pct`, `min_abstention_correct_pct`, `min_action_safety_pct`, `max_mean_cost_usd`). PR fails if any threshold is violated.
 
 ## 8. Reporting templates
 

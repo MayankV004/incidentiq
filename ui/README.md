@@ -18,7 +18,8 @@ It uses React 19, Tailwind CSS 4, Motion, and a server-side proxy so browser cli
 * **Server-Side Auth Proxy ([`app/api/v1/[...path]/route.ts`](app/api/v1/%5B...path%5D/route.ts)):** Browser code calls same-origin `/api/v1/*`. The Next.js server adds `X-API-Key` from server env `API_KEY` and forwards requests and **SSE** streams to `API_INTERNAL_URL`.
 * **Live SSE Hook ([`hooks/useIncidentStream.ts`](hooks/useIncidentStream.ts)):** Fetches saved incident state first, then opens an `EventSource` to `/api/v1/incidents/{id}/stream` while an incident is still running.
 * **Approval Safety ([`components/ApprovalModal.tsx`](components/ApprovalModal.tsx), [`components/tabs/LiveView.tsx`](components/tabs/LiveView.tsx)):** Sends `{ decision, approval_id }` (never raw HMAC capability tokens) to `POST /api/v1/incidents/{id}/approval`.
-* **Citation Drawer ([`components/CitationSheet.tsx`](components/CitationSheet.tsx)):** Opens raw metrics, sanitized logs, and runbook chunks when you click `ev_metric_*`, `ev_log_*`, or `ev_kb_*` pills.
+* **Citation Drawer ([`components/CitationSheet.tsx`](components/CitationSheet.tsx)):** Opens raw metrics, sanitized logs, runbook chunks, and episodic memory matches when you click `ev_metric_*`, `ev_log_*`, `ev_kb_*`, or `ev_mem_*` pills.
+* **Outcome Verification Feedback ([`components/ReportView.tsx`](components/ReportView.tsx), [`components/AbstainedPanel.tsx`](components/AbstainedPanel.tsx)):** Submits `POST /api/v1/incidents/{id}/feedback` verdicts (`correct_root_cause`, `wrong_root_cause`, `good_abstention`, `false_alarm`) to SQLite for episodic memory and `evals/score_live.py`.
 
 ---
 

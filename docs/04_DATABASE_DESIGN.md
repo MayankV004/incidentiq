@@ -38,7 +38,45 @@ erDiagram
 | `eval_results` | SQLite & Postgres | `id` (VARCHAR 36 UUID) | Per-scenario evaluation scores and hypothesis outcomes within an evaluation run |
 
 
-## 2. Schema (DDL)
+## 2. Implemented Schema (SQLAlchemy Models & Alembic Migrations)
+
+Defined in `incidentiq/db/models.py` and created across three Alembic revisions (`0001_incidents`, `451ef2dd7538`, `a7c4e1b9d203`). Evidence, hypothesis, guardrail flags, approval summary, and SSE event timeline are stored as `JSON` columns on `incidents` alongside normalized telemetry tables:
+
+- **`incidents`**: `id` (VARCHAR 64 PK), `scenario_id`, `service`, `symptom`, `window_start`, `window_end`, `status` (VARCHAR 32: `queued`, `running`, `awaiting_approval`, `completed`, `abstained`, `budget_exceeded`, `failed`, `remediation_executed`, `rejected_by_human`), `cost_usd` (Float), `latency_ms` (Float), `steps` (Integer), `hypothesis` (JSON), `evidence` (JSON), `guardrail_flags` (JSON), `approval` (JSON), `events` (JSON), `langfuse_trace_url`, `error`, `created_at` (Float epoch), `completed_at` (Float epoch).
+- **`approvals`**: `id` (VARCHAR 36 UUID PK), `approval_id`, `incident_id` (FK -> `incidents.id`), `action` (JSON), `decision` (`approved`, `rejected`, `expired`), `decided_by`, `token_hash`, `requested_at`, `decided_at`.
+- **`llm_calls`**: `id` (UUID PK), `agent_run_id`, `incident_id` (FK -> `incidents.id`), `model`, `purpose`, `prompt_tokens`, `completion_tokens`, `cost_usd`, `latency_ms`, `cache_hit`, `error`, `created_at`.
+- **`tool_calls`**: `id` (UUID PK), `agent_run_id`, `incident_id` (FK -> `incidents.id`), `server`, `tool_name`, `arguments` (JSON), `result` (JSON), `allowed` (Boolean), `error`, `latency_ms`, `created_at`.
+- **`guardrail_events`**: `id` (UUID PK), `incident_id` (FK -> `incidents.id`), `phase`, `flag_type`, `detail`, `raw_input`, `sanitized_output`, `created_at`.
+- **`eval_runs`**: `id` (UUID PK), `run_name`, `split`, `repeats`, `total_scenarios`, `total_runs`, `accuracy_pct`, `groundedness_pct`, `abstention_correct_pct`, `action_safety_pct`, `mean_cost_usd`, `latency_p50_ms`, `latency_p95_ms`, `code_path`, `notes`, `created_at`.
+- **`eval_results`**: `id` (UUID PK), `eval_run_id` (FK -> `eval_runs.id`), `scenario_id`, `repeat_index`, `accuracy`, `groundedness`, `abstention_correct`, `cost_usd`, `latency_ms`, `steps`, `hypothesis` (JSON), `error`, `created_at`.
+- **`incident_feedback`**: `id` (UUID PK), `incident_id` (FK -> `incidents.id`), `verdict` (`correct_root_cause`, `wrong_root_cause`, `good_abstention`, `false_alarm`), `corrected_category`, `notes`, `submitted_by`, `created_at`.
+
+### Approval & Status Terminology Mapping
+
+| Stage | Approve Path | Reject Path | Timeout / Unapproved |
+|---|---|---|---|
+| API request (`POST /v1/incidents/{id}/approval` `decision`) | `"approve"` (note: any string != `"reject"` enters approve path) | `"reject"` | — |
+| HTTP response `status` | `"approved_and_executed"` | `"rejected"` | — |
+| DB `approvals.decision` | `"approved"` | `"rejected"` | `"expired"` (schema value; 15m token TTL) |
+| DB `incidents.status` | `"remediation_executed"` | `"rejected_by_human"` | `"awaiting_approval"` |
+
+## 3. Data & Operational Notes
+
+- `DATABASE_URL` defaults to `sqlite:///incidentiq.db` (`incidentiq/db/session.py`); URLs prefixed with `postgresql+asyncpg://` or `postgresql://` are translated to synchronous `postgresql+psycopg://`.
+- Scenario raw data (metrics, logs) stays in files under `scenarios/`, not in the DB.
+- Alerts are sanitized by `GuardrailManager.process_input_alert` before persistence on `incidents`.
+- Demo incidents can be rotated or truncated via SQLite maintenance; `evals/results/*.json` preserves committed benchmark history.
+
+## 4. Planned / Future work
+
+- Normalizing `agent_runs`, `evidence`, `hypotheses`, `scenarios`, `redteam_cases`/`redteam_runs`/`redteam_results`, and `audit_log` into PostgreSQL tables.
+- Storing markdown KB chunks and embeddings (`kb_documents`, `kb_chunks` with `pgvector` HNSW + `tsvector` GIN) in Postgres.
+
+---
+
+## Appendix: Target schema (not implemented)
+
+The original PostgreSQL 16 + `pgvector` design DDL and hybrid retrieval query are preserved below as the target multi-node expansion schema. None of `pgvector`, `kb_documents`, `kb_chunks`, `agent_runs`, `evidence`, `hypotheses`, `scenarios`, `redteam_*`, or `audit_log` exist in the current migrations.
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS vector;
@@ -248,7 +286,9 @@ CREATE TABLE audit_log (
 );
 ```
 
-## 3. Hybrid retrieval query (pattern)
+-- Note: the implemented SQLite/Postgres schema uses string UUID/IDs and adds `incident_feedback` + `remediation_executed`/`rejected_by_human` statuses (see Section 2).
+
+### Target hybrid retrieval query (not implemented in v1 BM25 demo)
 
 ```sql
 -- vector candidates
@@ -261,12 +301,4 @@ FROM kb_chunks WHERE tsv @@ websearch_to_tsquery('english', :q)
 ORDER BY score DESC LIMIT 20;
 ```
 
-Merge both lists with reciprocal rank fusion in Python, rerank the top 20 with the cross-encoder, return the top 5.
-
-## 4. Data notes
-
-- Scenario raw data (metrics, logs) stays in files under `scenarios/`, not in the DB. Only labels and metadata are stored.
-- `raw_alert` is stored after PII redaction.
-- Evidence rows hold compact, capped data to avoid bloating the DB.
-- Retention: demo data can be truncated freely; keep `eval_runs` and `redteam_runs` permanently for the results history.
-- Embedding dimension must match the model: 384 for bge-small, 768 for bge-base. Changing it requires re-embedding and altering the column.
+Merge both lists with reciprocal rank fusion in Python, rerank the top 20 with the cross-encoder, return the top 5 (embedding dimension must match model: 384 for `bge-small`, 768 for `bge-base`).

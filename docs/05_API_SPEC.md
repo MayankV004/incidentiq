@@ -20,20 +20,26 @@ Base URL: `/v1`. JSON over HTTP. Streaming via Server-Sent Events (SSE). Auth fo
 { "error": { "code": "validation_error", "message": "window_end must be after window_start", "details": {} } }
 ```
 
-| HTTP | code | Meaning |
-|---|---|---|
-| 400 | validation_error | Bad input |
-| 401 | unauthorized | Missing or wrong key |
-| 404 | not_found | Unknown id |
-| 409 | invalid_state | e.g. approving a completed incident |
-| 422 | guardrail_blocked | Input rejected by guard |
-| 429 | rate_limited | Too many requests or daily cost cap hit |
-| 500 | internal_error | Unexpected |
+- **Error envelope codes implemented in `incidentiq/api/main.py` and `security.py`:**
 
-## 2. Incidents
+| HTTP | `code` | Meaning |
+|---|---|---|
+| 400 | `INVALID_INPUT` | Bad input (`service`, `scenario_id`, empty/oversized `symptom`, bad window) |
+| 401 | `UNAUTHORIZED` | Missing or wrong `X-API-Key` |
+| 403 | `FORBIDDEN` | Invalid/mismatched `approval_id` or consumed approval token |
+| 404 | `NOT_FOUND` | Unknown incident ID |
+| 409 | `STATE_CONFLICT` | State conflict (e.g. approving when status is not `awaiting_approval`) |
+| 422 | `VALIDATION_ERROR` | Pydantic request validation failed or invalid `feedback` verdict |
+| 429 | `RATE_LIMIT_EXCEEDED` / `BUDGET_EXCEEDED` | IP rate limit (`5/min` create, `30/min` read) or `DAILY_COST_CAP_USD` exceeded |
+| 500 | `INTERNAL_ERROR` | Unexpected server error |
+
+## 2. Incidents & Scenarios
+
+### GET /v1/scenarios
+Lists available benchmark scenarios loaded from `scenarios/0*` (`id`, `number`, `title`, `service`, `symptom`, `expected_root_cause`, `expected_action`, `window_start`, `window_end`).
 
 ### POST /v1/incidents
-Create and start an investigation.
+Create and queue an investigation. (Note: `DATA_MODE=live|replay` controls MCP server mode; passing `scenario_id` targets a replay scenario per call. There is no `source` field on `CreateIncidentRequest`.)
 
 Request:
 ```json
@@ -42,117 +48,105 @@ Request:
   "symptom": "p95 latency 4s, error rate 12%",
   "window_start": "2026-11-20T14:00:00Z",
   "window_end": "2026-11-20T14:30:00Z",
-  "source": "live",
   "scenario_id": null
 }
 ```
-`source` is `live` or `replay`; `scenario_id` is required for `replay`.
 
 Response `202`:
 ```json
-{ "incident_id": "b7e1...", "status": "queued", "stream_url": "/v1/incidents/b7e1.../events" }
+{ "incident_id": "inc_b7e1...", "status": "queued", "message": "Incident investigation launched" }
 ```
 
 ### GET /v1/incidents/{id}
-Returns incident, status, hypothesis, evidence list, cost and latency.
+Returns incident record (`incident_id`, `scenario_id`, `alert`, `status`, `hypothesis`, `evidence`, `cost_usd`, `latency_ms`, `steps`, `guardrail_flags`, `approval`, `events`, `langfuse_trace_url`, `error`, `created_at`, `completed_at`, and optional `feedback`; server-side `token_hash` and `approval_token` are stripped).
 
 ```json
 {
-  "id": "b7e1...",
+  "incident_id": "inc_b7e1...",
   "status": "completed",
   "hypothesis": {
     "category": "db_pool_exhaustion",
     "service": "orders",
     "confidence": 0.87,
     "reasoning": "Errors began when db_pool_in_use reached max; logs show 'too many connections'.",
-    "evidence_ids": ["ev_metric_001", "ev_log_004", "ev_rb_002"],
+    "evidence_ids": ["ev_metric_db_pool_in_use", "ev_log_err_1", "ev_kb_doc_runbook_db_pool_sec_1"],
     "suggested_action": { "type": "review_config", "target": "orders", "detail": "increase pool size, check leaked connections" },
     "abstained": false,
     "groundedness": 0.95
   },
-  "evidence": [ { "id": "ev_metric_001", "kind": "metric", "summary": "db_pool_in_use at max from 14:02", "source_ref": "tc_17" } ],
+  "evidence": [ { "id": "ev_metric_db_pool_in_use", "kind": "metric", "summary": "db_pool_in_use at max", "source_ref": "mcp:metrics_server:query_metric:db_pool_in_use" } ],
   "cost_usd": 0.0041,
   "latency_ms": 6120,
-  "guardrail_events": []
+  "guardrail_flags": []
 }
 ```
 
 ### GET /v1/incidents
-Query params: `status`, `limit` (default 20), `cursor`. Returns a page of incident summaries.
+Lists recent incidents sorted newest-first (`incident_id`, `service`, `symptom`, `status`, `cost_usd`, `latency_ms`, `created_at`, `category`, `root_cause`, `confidence`, `langfuse_trace_url`). *(Pagination params `status`, `limit`, `cursor` are Planned / Future work.)*
 
-### GET /v1/incidents/{id}/events  (SSE)
-Streams progress events. Content type `text/event-stream`.
+### GET /v1/incidents/{id}/stream  (SSE)
+Streams progress events (`text/event-stream`). Replays past stored events immediately, then streams live updates until `done` or terminal status (`completed`, `awaiting_approval`, `abstained`, `budget_exceeded`, `failed`, `remediation_executed`, `rejected_by_human`). Note: the route is `/stream` (there is no `/events` route).
 
-Event types:
-| event | data |
+Implemented event `type` values emitted in SSE JSON payloads:
+
+| `type` | Node / Description |
 |---|---|
-| `status` | `{ "status": "running" }` |
-| `agent_started` | `{ "agent": "logs", "at": "..." }` |
-| `tool_call` | `{ "agent": "logs", "server": "logs", "tool": "get_error_clusters", "args": {...} }` |
-| `evidence` | `{ "id": "ev_log_004", "kind": "log", "summary": "..." }` |
-| `agent_finished` | `{ "agent": "logs", "latency_ms": 1800, "cost_usd": 0.0004 }` |
-| `guardrail` | `{ "type": "injection", "action": "quarantined", "stage": "tool_output" }` |
-| `hypothesis` | full hypothesis object |
-| `approval_required` | `{ "approval_id": "...", "action": {...} }` |
-| `done` | `{ "status": "completed", "cost_usd": 0.0041, "latency_ms": 6120 }` |
+| `incident_started` | `system` — investigation initialized with redacted alert |
+| `guardrail_executed` | `input_guard` / `output_guard` — PII/injection or groundedness/leakage scan |
+| `supervisor_planned` | `supervisor` — specialist plan list |
+| `evidence_found` | `metrics_agent` / `logs_agent` / `runbook_agent` / `memory_agent` — extracted `evidence[]` |
+| `hypothesis_synthesized` | `root_cause_agent` — structured `Hypothesis` |
+| `approval_required` | `human_approval` — `approval_id`, `status`, `action` |
+| `agent_finished` | generic node completion fallback |
+| `done` | `system` — terminal status (`completed`, `awaiting_approval`, `abstained`, `budget_exceeded`, `failed`), cost, latency, `langfuse_trace_url` |
 
-## 3. Approvals
+## 3. Approvals & Feedback
 
 ### POST /v1/incidents/{id}/approval
 Request:
 ```json
-{ "approval_id": "a1...", "decision": "approved", "decided_by": "mayank" }
+{ "approval_id": "appr_req_a1...", "decision": "approve" }
 ```
-Response `200`: `{ "status": "completed", "executed": "dry_run", "result": { ... } }`
+Response `200` (approve): `{ "status": "approved_and_executed", "result": { ... } }`  
+Response `200` (reject): `{ "status": "rejected", "message": "Remediation action rejected by engineer" }`
 
-Rules: only valid when status is `awaiting_approval`; decision resumes the LangGraph run from its checkpoint. Execution is always dry-run in v1.
+Rules: only valid when incident status is `awaiting_approval`. Verifies `approval_id`, consumes (or re-issues after server restart) the server-side single-use HMAC capability token bound to incident/action/target, and invokes `remediation_server` in **dry-run only** mode. (Any `decision` whose lowercase value is not `"reject"` follows the approve path.)
 
-## 4. Knowledge base
+### Approval Value Mapping
+
+| Layer | Approve Path | Reject Path |
+|---|---|---|
+| API request `decision` (`POST /approval`) | `"approve"` (sent by UI; any non-`"reject"` accepted) | `"reject"` |
+| API response `status` | `"approved_and_executed"` | `"rejected"` |
+| DB `approvals.decision` | `"approved"` | `"rejected"` |
+| DB `incidents.status` | `"remediation_executed"` | `"rejected_by_human"` |
+
+### POST /v1/incidents/{id}/feedback
+Accepts `{ "verdict": "correct_root_cause" | "wrong_root_cause" | "good_abstention" | "false_alarm", "corrected_category"?: str, "notes"?: str, "submitted_by"?: str }`, scrubs PII before writing to `incident_feedback`, updates the in-memory record, and returns `{ "status": "recorded", "feedback": {...} }`.
+
+## 4. Evaluation and Red Team (Implemented Read Endpoints)
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | /v1/kb/ingest | Re-ingest `knowledge/` (admin) |
-| GET | /v1/kb/search?q=...&k=5 | Debug retrieval, returns chunks with scores |
-| GET | /v1/kb/documents | List indexed docs |
+| `GET` | `/v1/evals` | Returns committed benchmark JSON artifacts from `evals/results/*.json` keyed by filename |
+| `GET` | `/v1/redteam` | Returns adversarial cases from `evals/redteam/cases.json`, total count, and `blocked_rate` |
 
-## 5. Evaluation and red team
-
-| Method | Path | Purpose |
-|---|---|---|
-| POST | /v1/evals/runs | Start a benchmark run `{ "name": "v2-optimized", "repeats": 3, "scenario_ids": null }` |
-| GET | /v1/evals/runs | List runs with summary |
-| GET | /v1/evals/runs/{id} | Per-scenario results |
-| GET | /v1/evals/compare?a={id}&b={id} | Metric deltas between two runs |
-| POST | /v1/redteam/runs | Run all attack cases |
-| GET | /v1/redteam/runs/{id} | Outcomes and block rate |
-
-Eval summary shape:
-```json
-{
-  "accuracy": 0.83, "evidence_recall": 0.78, "groundedness": 0.92,
-  "abstention_quality": 0.75, "tool_use_correctness": 0.95,
-  "cost_per_incident_usd": 0.0041, "latency_p50_ms": 4300, "latency_p95_ms": 7800
-}
-```
-
-## 6. Demo shop control (demo only)
+## 5. Operations
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | /v1/shop/faults | List available faults |
-| POST | /v1/shop/faults/{fault}/inject | Inject a fault `{ "variant": 2 }` |
-| POST | /v1/shop/faults/reset | Return shop to healthy state |
+| `GET` | `/health` / `/healthz` | Liveness check (`{"status": "ok", "service": "incidentiq_api"}`) |
+| `GET` | `/readyz` | Probes DB (`SELECT 1`) and, when `MCP_MODE=http`, TCP reachability of `mcp-metrics`, `mcp-logs`, and `mcp-remediation` (`503` if degraded; does not check Redis) |
 
-## 7. Operations
+## 6. Rate limits and cost caps
 
-| Method | Path | Purpose |
-|---|---|---|
-| GET | /healthz | Liveness |
-| GET | /readyz | Checks DB, Redis, MCP servers |
-| GET | /metrics | Prometheus metrics for IncidentIQ |
+- Per IP: `30` requests/minute on `GET /v1/*` read endpoints, `5` incident creations/minute on `POST /v1/incidents` (keyed on right-to-left `X-Forwarded-For` parsing for `TRUSTED_PROXY_IPS`).
+- Global daily LLM spend cap (`DAILY_COST_CAP_USD`, default `2.00`): beyond it, `POST /v1/incidents` returns HTTP `429` (`BUDGET_EXCEEDED`).
+- Per-incident budget & step caps (`INCIDENT_BUDGET_USD`, `MAX_AGENT_STEPS`).
 
-## 8. Rate limits and cost caps
+## 7. Planned / Future work (Endpoints not implemented on `incidentiq-api` in v1)
 
-- Per IP: 30 requests/minute on read endpoints, 5 incident creations/minute.
-- Global daily LLM spend cap (env `DAILY_COST_CAP_USD`); beyond it, `POST /v1/incidents` returns 429 `rate_limited` with a clear message.
-- Per-incident budget (env `INCIDENT_BUDGET_USD`, `MAX_AGENT_STEPS`).
+- **Knowledge base admin & search:** `POST /v1/kb/ingest`, `GET /v1/kb/search`, `GET /v1/kb/documents` (currently KB is loaded into memory by `incidentiq/rag/engine.py`).
+- **API-triggered eval & red-team runs / comparison:** `POST /v1/evals/runs`, `GET /v1/evals/runs`, `GET /v1/evals/runs/{id}`, `GET /v1/evals/compare`, `POST /v1/redteam/runs`, `GET /v1/redteam/runs/{id}` (currently executed via CLI `evals/run_evals.py` and `evals/redteam/run_redteam.py`).
+- **Control-plane shop fault proxy & API metrics:** `GET /v1/shop/faults`, `POST /v1/shop/faults/{fault}/inject`, `POST /v1/shop/faults/reset`, and API `GET /metrics` (`shop/` containers expose chaos endpoints and `/metrics` directly on internal ports; API `/metrics` is reserved in `deploy/Caddyfile` with basic auth).
+- **Cursor pagination & filtering:** `status`, `limit`, `cursor` query parameters on `GET /v1/incidents`.

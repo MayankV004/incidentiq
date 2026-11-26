@@ -4,7 +4,11 @@ Default implementation: Next.js (App Router) with TypeScript and Tailwind CSS. K
 
 ## 1. Navigation
 
-Sidebar: **Live Incident**, **Incidents**, **Evaluation**, **Security**, **Traces** (external link to Langfuse), **Shop Control**.
+Implemented App Router pages (6 page routes + 1 server-side BFF route `/api/v1/[...path]`):
+- `/` (**Live Triage**), `/incidents` (**Incidents History**), `/incidents/[id]` (shareable incident detail view), `/evaluation` (**Evaluation Suite**), `/security` (**Security Matrix**), and `/shop` (**Shop Chaos Lab**).
+- Note: Sidebar (`AppSidebar.tsx`) displays the 5 top-level section links; an incident's Langfuse trace link renders inline inside the incident/eval views when `langfuse_trace_url` is present (`Traces` standalone sidebar link is Planned / Future work).
+
+> *Sections 2–8 below combine initial design sketches with the implemented routes described in Section 10; example numbers in wireframes are illustrative mockups, not benchmark measurements.*
 
 ## 2. Page 1: Live Incident (main)
 
@@ -62,13 +66,14 @@ Failure drill-down: clicking a failed row shows expected vs actual, evidence use
 
 ## 5. Page 4: Security
 
-- Headline: block rate (for example 17/20), with a bar by attack category.
-- Table: case id, category, payload preview, outcome (blocked, partial, succeeded), defense that stopped it.
-- A "Try an attack" box (demo mode): paste a poisoned log line, run it in a sandboxed replay scenario, and watch it get quarantined.
+- Headline: block rate across the 20 adversarial test cases loaded from `/api/v1/redteam`, grouped by attack category.
+- Table: case id, category, payload preview, target, defense outcome.
+- **Planned / Future work:** an interactive "Try an attack" sandbox runner in the Security page.
 
-## 6. Page 5: Shop Control (demo)
+## 6. Page 5: Shop Control (`/shop`)
 
-Buttons per fault type with a variant selector, a "Reset shop" button, and a small live chart of error rate and latency from Prometheus so viewers see the fault happen. After injecting, a "Send alert to IncidentIQ" button (or automatic alert forwarding).
+- **Implemented:** Displays the internal 4-service Docker topology (`gateway`, `orders`, `payments`, `fake-external`) and a quick jump to Live Triage replay (remote fault-injection endpoints are disabled on public ingress).
+- **Planned / Future work:** UI fault-injection variant buttons, "Reset shop", live Prometheus error/latency charts, and one-click alert forwarding from `/shop`.
 
 ## 7. Components
 
@@ -84,9 +89,9 @@ Buttons per fault type with a variant selector, a "Reset shop" button, and a sma
 
 ## 8. User flows
 
-**Flow A, live demo:** Shop Control, inject fault, alert forwarded, Live Incident timeline, report, approve dry-run.
-**Flow B, quality proof:** Evaluation page, compare v1 vs v2, open a failed scenario, view trace.
-**Flow C, security proof:** Security page, view block rate, run a live attack.
+**Flow A, live demo:** Select a replay scenario on `/` (or forward an alert via API/monitoring overlay), watch the Live Triage SSE timeline + `CitationSheet` evidence drawer, read report, and approve dry-run remediation.
+**Flow B, quality proof:** Evaluation page (`/evaluation`), inspect committed benchmark scorecards and open `langfuse_trace_url`.
+**Flow C, security proof:** Security page (`/security`), inspect the 20-case red-team matrix and defense outcomes. *(Interactive attack/fault injection widgets and per-run trace sidebar links are Planned / Future work.)*
 
 ## 9. Visual guidelines
 
